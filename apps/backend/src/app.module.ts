@@ -5,6 +5,7 @@ import { LoggerModule } from "nestjs-pino";
 
 import { isProduction, logLevel } from "./config/env.js";
 import { API_PREFIX, globalThrottler } from "./constants/index.js";
+import { DbModule } from "./db/db.module.js";
 import { HttpExceptionFilter } from "./filters/http-exception.filter.js";
 import { HealthModule } from "./health/health.module.js";
 
@@ -28,6 +29,7 @@ const throttlerModule = {
     imports: [
         LoggerModule.forRoot(loggerModule),
         ThrottlerModule.forRoot([throttlerModule]),
+        DbModule,
         HealthModule,
     ],
     providers: [

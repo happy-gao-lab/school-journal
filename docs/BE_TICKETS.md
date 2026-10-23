@@ -104,11 +104,11 @@ Working monorepo with a running NestJS app connected to Neon, plus a shared pack
 - NestJS (Express) via Nest CLI: `dev` (`nest start --watch`), `build`, `start`, `typecheck`, `lint` wired into turbo
 - `tsconfig.json` extends `tsconfig.base.json`: `module` / `moduleResolution: nodenext`, `experimentalDecorators` + `emitDecoratorMetadata` (required by Nest DI), `strictPropertyInitialization: false`
 - `@school-journal/shared` as a workspace dependency
-- Env: `dotenv` + zod schema validated at startup (fails fast), exported typed `env` (not `@nestjs/config`); `NODE_ENV`, `PORT` (default `4000`), `CLIENT_URL` (default `http://localhost:3000`) in `apps/backend/.env.example`
+- Env: `dotenv` + zod schema validated at startup (fails fast), exported typed `env` (not `@nestjs/config`); `NODE_ENV`, `PORT` (default `4000`), `CLIENT_URL` (default `http://localhost:3000`, a plain http(s) origin), optional `LOG_LEVEL` in `apps/backend/.env.example`
 - CORS for `CLIENT_URL` only, `credentials: true`; global prefix `/api`; `enableShutdownHooks()`
 - `helmet()` security headers; Content-Security-Policy relaxed so the Swagger UI works
 - Swagger (`@nestjs/swagger`): UI at `/api/docs`, outside production only; zod schemas in the docs come in BE-0.5
-- nestjs-pino: `pino-pretty` + `debug` in dev, JSON + `info` in prod; `authorization` / `cookie` headers redacted; health requests not logged; `bufferLogs`
+- nestjs-pino: `pino-pretty` + `debug` in dev, JSON + `info` in prod, `silent` in tests; `LOG_LEVEL` overrides the level; `authorization` / `cookie` headers redacted; health requests not logged; `bufferLogs`
 - Throttler: global limit 100 requests / 60 s (constants in `constants/index.ts`); stricter auth limits in BE-1
 - `constants/errors.ts`: `errors` as `as const` object, the only source of error messages
 - Global `HttpExceptionFilter`: `{ statusCode, message }` with `message` always a string (arrays joined); unknown exceptions are logged → 500 with `errors.SOMETHING_WENT_WRONG`
@@ -134,13 +134,23 @@ Working monorepo with a running NestJS app connected to Neon, plus a shared pack
 
 **Scope**
 
-- `db/index.ts` (Neon serverless pool), `db/schemas/` folder
-- `drizzle.config.ts`, scripts `db:generate`, `db:migrate`, `db:push`
-- `DATABASE_URL` in `.env.example`
+- Drizzle 1.0 RC (`drizzle-orm`, `drizzle-kit`) + `@neondatabase/serverless`
+- `db/index.ts`: Neon serverless `Pool` (WebSocket) with `drizzle-orm/neon-serverless`, exports the Drizzle instance; not `neon-http`, which has no interactive transactions; 5 s connection timeout (`DB_CONNECTION_TIMEOUT`) so an unreachable DB fails fast
+- `DbModule` closes the pool on application shutdown (`pool.end()`)
+- `db/schemas/` folder for `<name>.schemas.ts` files (tables come in later tickets)
+- Env: `DATABASE_URL` (required, `postgres://` / `postgresql://`) in the zod env schema and `apps/backend/.env.example`; the direct (non-pooler) Neon URL, used by both the app and migrations
+- `drizzle.config.ts`: schema `./src/db/schemas/*.schemas.ts`, out `./drizzle` (migrations committed); no casing option (Drizzle 1.0 has none), schemas use `pgTable` with explicit snake_case column names (e.g. `timestamp("created_at")`); URL via `dotenv` + a `process.env.DATABASE_URL` check (not `config/env.ts`)
+- Scripts `db:generate`, `db:migrate`; migrations run only through the script, never at app startup; no `db:push`
+- `GET /health` checks the DB with `select 1`: 200 `{ status: "ok" }`, or 503 with `errors.DATABASE_UNAVAILABLE` through the global filter (`{ statusCode: 503, message }`)
+- Global filter: our `HttpException`s keep their `errors.ts` message for 5xx too (5xx are logged); unknown errors → 500 `SOMETHING_WENT_WRONG`
+- Not here: shared `timestamps` column helper (BE-1.1), seed (BE-1.8)
 
 **Acceptance criteria**
 
-- [ ] `db:generate` + `db:migrate` run against a Neon dev branch
+- [ ] The app starts with a valid `DATABASE_URL`; a missing or invalid one stops it with a clear message
+- [ ] `GET /api/health` returns 200 when the DB is reachable and 503 when it isn't
+- [ ] `db:generate` / `db:migrate` run against the Neon dev branch (the first real migration comes in BE-1.1)
+- [ ] `typecheck` and `lint` pass
 
 ---
 

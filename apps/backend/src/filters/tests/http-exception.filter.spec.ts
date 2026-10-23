@@ -56,16 +56,16 @@ describe("HttpExceptionFilter", () => {
         });
     });
 
-    it("hides the message of a 5xx HttpException and logs it", () => {
-        const exception = new InternalServerErrorException("db pool exhausted");
+    it("keeps the message of a 5xx HttpException and logs it", () => {
+        const exception = new InternalServerErrorException("Database is unavailable");
         const { status, json, logError } = runFilter(exception);
 
         expect(status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
         expect(json).toHaveBeenCalledWith({
             statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-            message: errors.SOMETHING_WENT_WRONG,
+            message: "Database is unavailable",
         });
-        expect(logError).toHaveBeenCalledWith({ err: exception }, "Unhandled exception");
+        expect(logError).toHaveBeenCalledWith({ err: exception }, "Server error");
     });
 
     it("returns 500 with the generic message for an unknown Error and logs it", () => {

@@ -40,8 +40,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
     catch(exception: unknown, host: ArgumentsHost): void {
         const response = host.switchToHttp().getResponse<Response>();
 
-        if (exception instanceof HttpException && exception.getStatus() < 500) {
+        // Thrown on purpose by our code, so the message (from errors.ts) is safe to send;
+        // 5xx are still logged with their cause
+        if (exception instanceof HttpException) {
             const statusCode = exception.getStatus();
+
+            if (statusCode >= 500) {
+                this.logger.error({ err: exception }, "Server error");
+            }
 
             response.status(statusCode).json({
                 statusCode,
@@ -60,16 +66,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
             return;
         }
 
-        // 5xx and unknown errors are logged, their details never reach the client
+        // Unknown errors are logged, their details never reach the client
         this.logger.error({ err: exception }, "Unhandled exception");
 
-        const statusCode =
-            exception instanceof HttpException
-                ? exception.getStatus()
-                : HttpStatus.INTERNAL_SERVER_ERROR;
-
-        response.status(statusCode).json({
-            statusCode,
+        response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+            statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
             message: errors.SOMETHING_WENT_WRONG,
         });
     }

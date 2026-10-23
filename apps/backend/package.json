@@ -10,9 +10,12 @@
         "typecheck": "tsc --noEmit",
         "lint": "oxlint --deny-warnings --type-aware .",
         "test": "vitest run",
-        "test:e2e": "vitest run -c vitest.config.e2e.ts"
+        "test:e2e": "vitest run -c vitest.config.e2e.ts",
+        "db:generate": "drizzle-kit generate",
+        "db:migrate": "drizzle-kit migrate"
     },
     "dependencies": {
+        "@neondatabase/serverless": "^1.2.0",
         "@nestjs/common": "^12.2.0",
         "@nestjs/core": "^12.2.0",
         "@nestjs/platform-express": "^12.2.0",
@@ -20,6 +23,7 @@
         "@nestjs/throttler": "^6.7.1",
         "@school-journal/shared": "workspace:*",
         "dotenv": "~18.0.8",
+        "drizzle-orm": "1.0.0-rc.5",
         "helmet": "^8.3.0",
         "nestjs-pino": "^5.3.1",
         "pino-http": "^11.0.0",
@@ -33,6 +37,7 @@
         "@types/express": "^5.0.6",
         "@types/node": "^24.19.2",
         "@types/supertest": "^7.2.1",
+        "drizzle-kit": "1.0.0-rc.5",
         "pino-pretty": "^13.2.0",
         "supertest": "^7.3.1",
         "typescript": "^6.0.2"

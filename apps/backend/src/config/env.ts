@@ -12,6 +12,11 @@ const envSchema = z.object({
             error: "Must be an origin like http://localhost:3000 (no path or trailing slash)",
         })
         .default("http://localhost:3000"),
+    // Direct (non-pooler) Neon connection string, also used by drizzle-kit migrations
+    DATABASE_URL: z.url({
+        protocol: /^postgres(ql)?$/,
+        error: "Must be a postgres:// or postgresql:// connection string",
+    }),
     // Overrides the level picked from NODE_ENV (production: info, test: silent, otherwise: debug)
     LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).optional(),
 });

@@ -19,15 +19,18 @@ Ticket lifecycle — each step starts only when the user asks for it; a yes cove
 7. `/ticket-tests` → write tests.
 8. Fix what the tests found (on request).
 9. Commit and push (on request).
-10. Open the PR into the epic and remind the user to review it.
+10. Open the PR into the epic, comment its Jira link on it, and remind the user to review it.
 11. Merge (on request).
 
 - Work is done **one ticket at a time** (`BE-<block>.<n>` / `FE-<block>.<n>`). Stay inside the ticket's scope; anything extra → note it, don't build it.
 - BE and FE are separate tickets — never mix backend and frontend changes in one task.
 - Before starting, read the block overview (goal, shared context) and the ticket's dependencies.
 - Tickets live in Jira project `SJ` (https://happygaodev.atlassian.net): blocks are epics, tickets are tasks whose summary starts with the ticket ID (e.g. `BE-1.3 Registration`), dependencies are "Blocks" links. **Jira is the source of truth for status**; the ticket files are documentation only and have no statuses.
+- Keep Jira statuses in step with the work (`To Do` → `Discussion` → `In Progress` → `Testing` → `Done`), updated as part of the lifecycle step the user approved:
+    - ticket: `Discussion` while discussed, `In Progress` from implementation through review fixes, `Testing` during `/ticket-tests` and its fixes, `Done` once its PR is merged into the epic
+    - epic: `In Progress` as soon as its first ticket leaves `To Do`, `Done` once its PR is merged into `dev`
 - At the start of each ticket we discuss its details. When asked, apply the agreed changes to **both** the Jira task and its section in the ticket file, keeping them in sync. Don't update either on your own.
-- Branch flow: `dev` → epic → ticket. One branch per epic (block), created from an up-to-date `dev`; one branch per ticket, created from its epic branch. Merge in reverse order: ticket → epic, then epic → `dev`. An epic is merged into `dev` only after all of its tickets are completed. Merges go through pull requests: after pushing a ticket branch, open a PR into its epic (`gh pr create --base <epic-branch>`); an epic gets a PR into `dev` once all its tickets are merged. PR title = the commit-style summary (`SJ-18 BE-0.2 Shared package`), body = what changed and how it was checked. Then remind the user to review the PR before merging, and **never merge without their explicit OK**. Merge with a merge commit and delete the merged branch locally and on origin (`gh pr merge --merge --delete-branch`): a ticket branch once it's merged into its epic, an epic branch once it's merged into `dev`. Only `main`, `dev` and the open epics stay.
+- Branch flow: `dev` → epic → ticket. One branch per epic (block), created from an up-to-date `dev`; one branch per ticket, created from its epic branch. Merge in reverse order: ticket → epic, then epic → `dev`. An epic is merged into `dev` only after all of its tickets are completed. Merges go through pull requests: after pushing a ticket branch, open a PR into its epic (`gh pr create --base <epic-branch>`); an epic gets a PR into `dev` once all its tickets are merged. PR title = the commit-style summary (`SJ-18 BE-0.2 Shared package`), body = what changed and how it was checked. Right after creating a PR, post its Jira link as a comment (`gh pr comment <n> --repo happy-gao-lab/school-journal --body "Jira: https://happygaodev.atlassian.net/browse/SJ-<n>"`; an epic PR links the epic). Then remind the user to review the PR before merging, and **never merge without their explicit OK**. Merge with a merge commit and delete the merged branch locally and on origin (`gh pr merge --merge --delete-branch`): a ticket branch once it's merged into its epic, an epic branch once it's merged into `dev`. Only `main`, `dev` and the open epics stay.
 - Branch names are lowercase kebab-case; the Jira key stays uppercase so Jira can link the branch:
     - epic: `<epic-key>-<block-id>-<short-title>` (e.g. `SJ-1-be-0-setup`)
     - ticket: `<jira-key>-<ticket-id>-<short-title>` (e.g. `SJ-19-be-0.3-nestjs-scaffold`)
@@ -100,7 +103,7 @@ Conventions:
 - Module per feature folder: `<feature>/<feature>.controller.ts`, `.service.ts`, `.module.ts`, `dto.ts`.
 - Cross-cutting code: `common/` (guards, decorators), `filters/`, `config/` (typed `env` validated at startup, app setup such as Swagger), `constants/` (`errors.ts` messages map, `index.ts` config constants), `utils/` (shared pure functions, no Nest dependencies).
 - DB: `db/index.ts` exports the Drizzle instance; tables in `db/schemas/<name>.schemas.ts` named `<name>Table`, with exported types `XTable` (`$inferSelect`), `CreateX` (`$inferInsert`), `UpdateX` (`Partial`).
-- snake_case column names, `timestamp(..., { mode: 'string' })`, `created_at` / `updated_at` defaults.
+- snake_case column names, named explicitly (Drizzle 1.0 has no casing option), `timestamp(..., { mode: 'string' })`, `created_at` / `updated_at` defaults.
 - Controllers are thin; logic and access checks in services. Errors via Nest exceptions with messages from `constants/errors.ts`.
 - Validation: zod schemas from `@school-journal/shared` through the zod validation pipe (not class-validator).
 - Auth: `AuthGuard` + `RolesGuard` with `@Roles()`, current user via `@CurrentUser()`. Student visibility checks go through `StudentAccessService`.
