@@ -1,14 +1,37 @@
 {
-  "name": "school-journal",
-  "private": true,
-  "packageManager": "pnpm@12.15.0",
-  "scripts": {
-    "dev": "turbo run dev",
-    "build": "turbo run build",
-    "lint": "turbo run lint",
-    "format": "turbo run format"
-  },
-  "devDependencies": {
-    "turbo": "^2.11.10"
-  }
+    "name": "school-journal",
+    "private": true,
+    "packageManager": "pnpm@12.15.0",
+    "engines": {
+        "node": ">=24"
+    },
+    "scripts": {
+        "dev": "turbo run dev",
+        "build": "turbo run build",
+        "lint": "turbo run lint lint:root check:package",
+        "lint:root": "oxlint --deny-warnings lint",
+        "typecheck": "turbo run typecheck",
+        "test": "turbo run test test:root",
+        "test:root": "vitest run lint",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "prepare": "husky || true"
+    },
+    "lint-staged": {
+        "*.{ts,tsx,js,mjs}": [
+            "prettier --write",
+            "oxlint --deny-warnings"
+        ],
+        "*.{json,md,css,yaml,yml}": "prettier --write"
+    },
+    "devDependencies": {
+        "@ianvs/prettier-plugin-sort-imports": "^4.7.1",
+        "husky": "^9.1.7",
+        "lint-staged": "^17.6.0",
+        "oxlint": "^1.89.0",
+        "oxlint-tsgolint": "^7.0.2004",
+        "prettier": "^3.9.10",
+        "turbo": "^2.11.10",
+        "vitest": "^5.0.5"
+    }
 }

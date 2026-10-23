@@ -1,0 +1,11 @@
+{
+    "$schema": "https://json.schemastore.org/tsconfig",
+    "compilerOptions": {
+        "target": "ES2023",
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "skipLibCheck": true,
+        "isolatedModules": true,
+        "esModuleInterop": true
+    }
+}

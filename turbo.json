@@ -1,20 +1,35 @@
 {
-  "$schema": "https://turborepo.com/schema.json",
-  "ui": "tui",
-  "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
-    },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    },
-    "lint": {
-      "dependsOn": ["^build"]
-    },
-    "format": {
-      "cache": false
+    "$schema": "https://turborepo.com/schema.json",
+    "ui": "tui",
+    "tasks": {
+        "build": {
+            "dependsOn": ["^build"],
+            "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+        },
+        "dev": {
+            "dependsOn": ["^build"],
+            "cache": false,
+            "persistent": true
+        },
+        "lint": {
+            "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.oxlintrc.json", "$TURBO_ROOT$/lint/**"]
+        },
+        "check:package": {
+            "dependsOn": ["build"]
+        },
+        "typecheck": {
+            "dependsOn": ["^build"],
+            "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/tsconfig.base.json"]
+        },
+        "test": {
+            "dependsOn": ["^build"]
+        },
+        "test:e2e": {
+            "dependsOn": ["^build"]
+        },
+        "//#lint:root": {},
+        "//#test:root": {
+            "inputs": ["$TURBO_DEFAULT$", "lint/**", ".oxlintrc.json"]
+        }
     }
-  }
 }
