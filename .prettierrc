@@ -1,0 +1,21 @@
+{
+    "printWidth": 100,
+    "tabWidth": 4,
+    "singleQuote": false,
+    "semi": true,
+    "trailingComma": "all",
+    "plugins": ["@ianvs/prettier-plugin-sort-imports"],
+    "importOrderParserPlugins": ["typescript", "jsx", "decorators-legacy"],
+    "importOrder": [
+        "^(react|react-dom)(/.*)?$",
+        "^next(/.*)?$",
+        "<BUILTIN_MODULES>",
+        "<THIRD_PARTY_MODULES>",
+        "",
+        "^@school-journal/(.*)$",
+        "",
+        "^@/(.*)$",
+        "",
+        "^[./]"
+    ]
+}
