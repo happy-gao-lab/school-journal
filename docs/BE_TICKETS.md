@@ -24,7 +24,7 @@ Working monorepo with a running NestJS app connected to Neon, plus a shared pack
 | ------ | -------------------------------- | -------------- |
 | BE-0.1 | Monorepo init                    | —              |
 | BE-0.2 | Shared package                   | BE-0.1         |
-| BE-0.3 | NestJS app scaffold              | BE-0.1         |
+| BE-0.3 | NestJS app scaffold              | BE-0.1, BE-0.2 |
 | BE-0.4 | Database connection & migrations | BE-0.3         |
 | BE-0.5 | Zod validation pipe              | BE-0.2, BE-0.3 |
 
@@ -94,21 +94,35 @@ Working monorepo with a running NestJS app connected to Neon, plus a shared pack
 
 ## [BE-0.3] NestJS app scaffold
 
-**Block:** BE-0 · **Depends on:** BE-0.1
+**Block:** BE-0 · **Depends on:** BE-0.1, BE-0.2
 
 **Goal:** Running backend app with base infrastructure.
 
 **Scope**
 
-- `apps/backend` layout: `main.ts`, `app.module.ts`, `constants/`, `filters/`
-- env loading, CORS for the frontend origin, global prefix (e.g. `/api`)
-- nestjs-pino logger, throttler, global `HttpExceptionFilter`, `constants/errors.ts`
-- `GET /health`
+- `apps/backend` layout: `main.ts`, `app.module.ts`, `constants/`, `filters/`, `health/`
+- NestJS (Express) via Nest CLI: `dev` (`nest start --watch`), `build`, `start`, `typecheck`, `lint` wired into turbo
+- `tsconfig.json` extends `tsconfig.base.json`: `module` / `moduleResolution: nodenext`, `experimentalDecorators` + `emitDecoratorMetadata` (required by Nest DI), `strictPropertyInitialization: false`
+- `@school-journal/shared` as a workspace dependency
+- Env: `dotenv` + zod schema validated at startup (fails fast), exported typed `env` (not `@nestjs/config`); `NODE_ENV`, `PORT` (default `4000`), `CLIENT_URL` (default `http://localhost:3000`) in `apps/backend/.env.example`
+- CORS for `CLIENT_URL` only, `credentials: true`; global prefix `/api`; `enableShutdownHooks()`
+- `helmet()` security headers; Content-Security-Policy relaxed so the Swagger UI works
+- Swagger (`@nestjs/swagger`): UI at `/api/docs`, outside production only; zod schemas in the docs come in BE-0.5
+- nestjs-pino: `pino-pretty` + `debug` in dev, JSON + `info` in prod; `authorization` / `cookie` headers redacted; health requests not logged; `bufferLogs`
+- Throttler: global limit 100 requests / 60 s (constants in `constants/index.ts`); stricter auth limits in BE-1
+- `constants/errors.ts`: `errors` as `as const` object, the only source of error messages
+- Global `HttpExceptionFilter`: `{ statusCode, message }` with `message` always a string (arrays joined); unknown exceptions are logged → 500 with `errors.SOMETHING_WENT_WRONG`
+- `GET /health` → `{ status: "ok" }`, excluded from throttling (`@SkipThrottle()`); DB check not here (BE-0.4)
+- Not here: `DATABASE_URL` (BE-0.4)
 
 **Acceptance criteria**
 
-- [ ] `pnpm --filter backend dev` starts the app
-- [ ] `GET /api/health` returns 200; unknown route returns the unified error shape
+- [ ] `pnpm --filter backend dev` starts the app; missing/invalid env stops it with a clear message
+- [ ] `GET /api/health` returns 200 `{ status: "ok" }`; unknown route returns `{ statusCode: 404, message }`
+- [ ] `Access-Control-Allow-Origin` is always `CLIENT_URL`, so browsers block other origins
+- [ ] Responses carry helmet security headers (no `X-Powered-By`)
+- [ ] `/api/docs` opens the Swagger UI in dev and is not available in production
+- [ ] `typecheck` and `lint` pass
 
 ---
 
@@ -140,11 +154,13 @@ Working monorepo with a running NestJS app connected to Neon, plus a shared pack
 
 - Global or per-route pipe (e.g. `nestjs-zod` or a small custom pipe)
 - Validation errors mapped to the unified error shape (field → message)
+- Request schemas shown in the Swagger docs (zod → OpenAPI)
 
 **Acceptance criteria**
 
 - [ ] Backend imports from `@school-journal/shared` and builds
 - [ ] Invalid body returns 400 with field-level errors
+- [ ] A route validated with a zod schema shows that schema in `/api/docs`
 
 ---
 

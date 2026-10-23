@@ -10,7 +10,7 @@ Custom Claude Code commands for this project. They're defined in `.claude/skills
 
 The `<ID>` is optional, e.g. `BE-1.3` or `FE-2.1`. Without it, the command uses the ticket being discussed in the conversation.
 
-Typical flow for a ticket: discuss → `/ticket-update` → implement → `/ticket-review` → fixes → `/ticket-tests` (if needed).
+Flow for a ticket: discuss → `/ticket-update` → branch → implement → `/ticket-review` → fixes → `/ticket-tests` → fixes → commit + push → PR (review it) → merge. Every step after the discussion runs only on request; the full list is in [CLAUDE.md](../CLAUDE.md) under "Ticket lifecycle".
 
 The built-in `/code-review` complements `/ticket-review` with a general bug pass over a diff or paths, but it doesn't know about the tickets.
 

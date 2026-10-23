@@ -8,6 +8,20 @@ Online school journal for tracking student progress. Roles: **admin, teacher, st
 
 ## Workflow
 
+Ticket lifecycle — each step starts only when the user asks for it; a yes covers only that step, and answers during the discussion are not permission to write anything:
+
+1. The user sends a ticket → we discuss its details.
+2. `/ticket-update` → show the preview; update Jira and the ticket file only after the user approves it.
+3. Create the ticket branch (on request).
+4. Implement the ticket (on request).
+5. `/ticket-review` → report only.
+6. Fix the findings and re-check (on request).
+7. `/ticket-tests` → write tests.
+8. Fix what the tests found (on request).
+9. Commit and push (on request).
+10. Open the PR into the epic and remind the user to review it.
+11. Merge (on request).
+
 - Work is done **one ticket at a time** (`BE-<block>.<n>` / `FE-<block>.<n>`). Stay inside the ticket's scope; anything extra → note it, don't build it.
 - BE and FE are separate tickets — never mix backend and frontend changes in one task.
 - Before starting, read the block overview (goal, shared context) and the ticket's dependencies.
@@ -84,7 +98,7 @@ Conventions:
 
 - ESM — relative imports end with `.js`.
 - Module per feature folder: `<feature>/<feature>.controller.ts`, `.service.ts`, `.module.ts`, `dto.ts`.
-- Cross-cutting code: `common/` (guards, decorators), `filters/`, `constants/` (`errors.ts` messages map, `index.ts` config constants), `utils/` (shared pure functions, no Nest dependencies).
+- Cross-cutting code: `common/` (guards, decorators), `filters/`, `config/` (typed `env` validated at startup, app setup such as Swagger), `constants/` (`errors.ts` messages map, `index.ts` config constants), `utils/` (shared pure functions, no Nest dependencies).
 - DB: `db/index.ts` exports the Drizzle instance; tables in `db/schemas/<name>.schemas.ts` named `<name>Table`, with exported types `XTable` (`$inferSelect`), `CreateX` (`$inferInsert`), `UpdateX` (`Partial`).
 - snake_case column names, `timestamp(..., { mode: 'string' })`, `created_at` / `updated_at` defaults.
 - Controllers are thin; logic and access checks in services. Errors via Nest exceptions with messages from `constants/errors.ts`.
