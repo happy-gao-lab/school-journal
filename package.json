@@ -8,13 +8,13 @@
     "scripts": {
         "dev": "turbo run dev",
         "build": "turbo run build",
-        "lint": "turbo run lint lint:root",
+        "lint": "turbo run lint lint:root check:package",
         "lint:root": "oxlint --deny-warnings lint",
         "typecheck": "turbo run typecheck",
         "test": "turbo run test test:root",
         "test:root": "vitest run lint",
-        "format": "turbo run format format:root",
-        "format:root": "prettier --write . \"!apps/**\" \"!packages/**\"",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
         "prepare": "husky || true"
     },
     "lint-staged": {
