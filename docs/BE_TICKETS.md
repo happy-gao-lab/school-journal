@@ -106,7 +106,7 @@ Working monorepo with a running NestJS app connected to Neon, plus a shared pack
 - `@school-journal/shared` as a workspace dependency
 - Env: `dotenv` + zod schema validated at startup (fails fast), exported typed `env` (not `@nestjs/config`); `NODE_ENV`, `PORT` (default `4000`), `CLIENT_URL` (default `http://localhost:3000`, a plain http(s) origin), optional `LOG_LEVEL` in `apps/backend/.env.example`
 - CORS for `CLIENT_URL` only, `credentials: true`; global prefix `/api`; `enableShutdownHooks()`
-- `helmet()` security headers; Content-Security-Policy relaxed so the Swagger UI works
+- `helmet()` security headers with the default Content-Security-Policy (the Swagger UI works with it)
 - Swagger (`@nestjs/swagger`): UI at `/api/docs`, outside production only; zod schemas in the docs come in BE-0.5
 - nestjs-pino: `pino-pretty` + `debug` in dev, JSON + `info` in prod, `silent` in tests; `LOG_LEVEL` overrides the level; `authorization` / `cookie` headers redacted; health requests not logged; `bufferLogs`
 - Throttler: global limit 100 requests / 60 s (constants in `constants/index.ts`); stricter auth limits in BE-1
