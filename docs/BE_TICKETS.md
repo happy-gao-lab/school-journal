@@ -74,14 +74,21 @@ Working monorepo with a running NestJS app connected to Neon, plus a shared pack
 
 **Scope**
 
-- `packages/shared` with build/exports usable from NestJS (ESM) and Next.js
-- Enums: `Role` (admin, teacher, student, parent), `UserStatus` (pending, approved, rejected)
-- Constants: grade min/max (1–100), weak/strong thresholds (< 60 / ≥ 85)
-- Folder for zod schemas (filled by later tickets)
+- `packages/shared` (`@school-journal/shared`) compiled with `tsc` to ESM in `dist/` (`NodeNext`, `.js` relative imports), usable from NestJS and Next.js
+- `package.json` `exports` map (`types` first, then `import`), declarations + declaration maps; packaging checked with `publint` / `@arethetypeswrong/cli`
+- Single root entry point (no subpath exports yet)
+- Enums as `as const` objects with a matching union type and a tuple for `z.enum` / Drizzle:
+    - `Role` (admin, teacher, student, parent) + `ROLES`
+    - `UserStatus` (pending, approved, rejected) + `USER_STATUSES`
+- Constants: `GRADE_MIN` = 1, `GRADE_MAX` = 100, `WEAK_TOPIC_THRESHOLD` = 60 (average < 60), `STRONG_TOPIC_THRESHOLD` = 85 (average ≥ 85)
+- `schemas/` folder for zod schemas (filled by later tickets); `zod` v4 as a dependency
+- Scripts `build`, `dev` (`tsc --watch`), `typecheck`, `lint`, `format` wired into turbo
 
 **Acceptance criteria**
 
-- [ ] Backend imports an enum from `@school-journal/shared` and builds
+- [ ] `pnpm --filter @school-journal/shared build` emits ESM + type declarations in `dist/`
+- [ ] A plain Node ESM `import { Role } from '@school-journal/shared'` works
+- [ ] `typecheck`, `lint` and the packaging check pass
 
 ---
 
@@ -136,6 +143,7 @@ Working monorepo with a running NestJS app connected to Neon, plus a shared pack
 
 **Acceptance criteria**
 
+- [ ] Backend imports from `@school-journal/shared` and builds
 - [ ] Invalid body returns 400 with field-level errors
 
 ---
