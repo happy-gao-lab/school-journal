@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { LoggerModule } from "nestjs-pino";
 
 import { isProduction, logLevel } from "./config/env.js";
+import { errors } from "./constants/errors.js";
 import { API_PREFIX, globalThrottler } from "./constants/index.js";
 import { DbModule } from "./db/db.module.js";
 import { HttpExceptionFilter } from "./filters/http-exception.filter.js";
@@ -21,14 +22,14 @@ const loggerModule = {
 };
 
 const throttlerModule = {
-    ttl: globalThrottler.TTL,
-    limit: globalThrottler.LIMIT,
+    throttlers: [{ ttl: globalThrottler.TTL, limit: globalThrottler.LIMIT }],
+    errorMessage: errors.TOO_MANY_REQUESTS,
 };
 
 @Module({
     imports: [
         LoggerModule.forRoot(loggerModule),
-        ThrottlerModule.forRoot([throttlerModule]),
+        ThrottlerModule.forRoot(throttlerModule),
         DbModule,
         HealthModule,
     ],

@@ -4,7 +4,7 @@ import { z } from "zod";
 
 const envSchema = z.object({
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-    PORT: z.coerce.number().int().positive().default(4000),
+    PORT: z.coerce.number().int().positive().max(65535).default(4000),
     // Compared with the request `Origin` as an exact string, so no path or trailing slash
     CLIENT_URL: z
         .url({ protocol: /^https?$/ })
