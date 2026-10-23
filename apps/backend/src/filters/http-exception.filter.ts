@@ -2,6 +2,7 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from
 import { Response } from "express";
 import { InjectPinoLogger, PinoLogger } from "nestjs-pino";
 
+import { FieldErrors } from "../common/pipes/zod-validation.pipe.js";
 import { errors } from "../constants/errors.js";
 
 type ClientError = { status: number; message: string };
@@ -37,6 +38,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
         return message ?? exception.message;
     }
 
+    // Validation errors (field → message) from the zod pipe
+    private extractFieldErrors(exception: HttpException): FieldErrors | undefined {
+        const response = exception.getResponse();
+
+        if (typeof response === "string") {
+            return undefined;
+        }
+
+        return (response as { errors?: FieldErrors }).errors;
+    }
+
     catch(exception: unknown, host: ArgumentsHost): void {
         const response = host.switchToHttp().getResponse<Response>();
 
@@ -52,6 +64,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
             response.status(statusCode).json({
                 statusCode,
                 message: this.extractMessage(exception),
+                errors: this.extractFieldErrors(exception),
             });
 
             return;

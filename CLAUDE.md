@@ -18,8 +18,8 @@ Ticket lifecycle — each step starts only when the user asks for it; a yes cove
 6. Fix the findings and re-check (on request).
 7. `/ticket-tests` → write tests.
 8. Fix what the tests found (on request).
-9. Commit and push (on request).
-10. Open the PR into the epic, comment its Jira link on it, and remind the user to review it.
+9. `/ticket-push` → commit and push (on request).
+10. `/ticket-push` also opens the PR into the epic, comments its Jira link on it, and reminds the user to review it.
 11. Merge (on request).
 
 - Work is done **one ticket at a time** (`BE-<block>.<n>` / `FE-<block>.<n>`). Stay inside the ticket's scope; anything extra → note it, don't build it.

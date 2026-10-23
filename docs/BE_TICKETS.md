@@ -162,15 +162,19 @@ Working monorepo with a running NestJS app connected to Neon, plus a shared pack
 
 **Scope**
 
-- Global or per-route pipe (e.g. `nestjs-zod` or a small custom pipe)
-- Validation errors mapped to the unified error shape (field → message)
-- Request schemas shown in the Swagger docs (zod → OpenAPI)
+- Custom `ZodValidationPipe` (no `nestjs-zod`: it doesn't support Nest 12 / `@nestjs/swagger` 12): `schema.safeParse()`, passes the parsed value (`z.infer`) to the handler, throws `BadRequestException` on failure
+- Per-route decorators in `common/decorators/`: `@ZodBody(schema)` and `@ZodQuery(schema)` — apply the pipe and register the schema in Swagger via `z.toJSONSchema()` (`@ApiBody` for bodies, `@ApiQuery` per property for queries)
+- Validation errors in the unified error shape: `{ statusCode: 400, message: "Validation failed", errors: { "<field.path>": "<message>" } }`
+    - nested paths joined with dots, first issue per field, object-level issues under the `""` key
+    - message `VALIDATION_FAILED` in `constants/errors.ts`; `HttpExceptionFilter` passes `errors` through
+- Query values arrive as strings: query schemas use `z.coerce.*` for numbers/booleans (the schemas' responsibility, added by feature tickets)
+- Out of scope: path-param validation (Nest `ParseIntPipe` / `ParseUUIDPipe`; a `@ZodParam` can come with the first route that needs it) and response validation
 
 **Acceptance criteria**
 
 - [ ] Backend imports from `@school-journal/shared` and builds
 - [ ] Invalid body returns 400 with field-level errors
-- [ ] A route validated with a zod schema shows that schema in `/api/docs`
+- [ ] A route validated with a zod schema shows that schema in `/api/docs` (checked in tests with a test-only controller, so no demo route ships)
 
 ---
 
