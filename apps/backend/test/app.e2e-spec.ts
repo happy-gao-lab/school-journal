@@ -160,7 +160,7 @@ describe("app (e2e)", () => {
         expect(response.status).toBe(HttpStatus.TOO_MANY_REQUESTS);
         expect(response.body).toEqual({
             statusCode: HttpStatus.TOO_MANY_REQUESTS,
-            message: expect.any(String),
+            message: errors.TOO_MANY_REQUESTS,
         });
     });
 

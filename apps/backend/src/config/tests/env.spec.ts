@@ -49,7 +49,7 @@ describe("env", () => {
         expect(env.PORT).toBe(5000);
     });
 
-    it.each(["abc", "0", "-1", "1.5"])("rejects PORT=%s", async (port) => {
+    it.each(["abc", "0", "-1", "1.5", "65536"])("rejects PORT=%s", async (port) => {
         await expect(loadEnv({ PORT: port })).rejects.toThrow(/PORT/);
     });
 
