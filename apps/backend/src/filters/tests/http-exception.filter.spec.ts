@@ -47,6 +47,20 @@ describe("HttpExceptionFilter", () => {
         });
     });
 
+    it("passes the field errors of a validation exception through", () => {
+        const fieldErrors = { name: "Too short", "address.city": "Required" };
+
+        const { json } = runFilter(
+            new BadRequestException({ message: errors.VALIDATION_FAILED, errors: fieldErrors }),
+        );
+
+        expect(json).toHaveBeenCalledWith({
+            statusCode: HttpStatus.BAD_REQUEST,
+            message: errors.VALIDATION_FAILED,
+            errors: fieldErrors,
+        });
+    });
+
     it("falls back to the exception message when the response object has none", () => {
         const { json } = runFilter(new HttpException({ reason: "x" }, HttpStatus.CONFLICT));
 
