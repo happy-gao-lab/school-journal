@@ -24,6 +24,9 @@
         "test": {
             "dependsOn": ["^build"]
         },
+        "test:e2e": {
+            "dependsOn": ["^build"]
+        },
         "//#lint:root": {},
         "//#test:root": {
             "inputs": ["$TURBO_DEFAULT$", "lint/**", ".oxlintrc.json"]
