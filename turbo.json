@@ -7,11 +7,15 @@
             "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
         },
         "dev": {
+            "dependsOn": ["^build"],
             "cache": false,
             "persistent": true
         },
         "lint": {
             "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.oxlintrc.json", "$TURBO_ROOT$/lint/**"]
+        },
+        "check:package": {
+            "dependsOn": ["build"]
         },
         "typecheck": {
             "dependsOn": ["^build"],
@@ -20,15 +24,9 @@
         "test": {
             "dependsOn": ["^build"]
         },
-        "format": {
-            "cache": false
-        },
         "//#lint:root": {},
         "//#test:root": {
             "inputs": ["$TURBO_DEFAULT$", "lint/**", ".oxlintrc.json"]
-        },
-        "//#format:root": {
-            "cache": false
         }
     }
 }

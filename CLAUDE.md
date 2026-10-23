@@ -74,7 +74,7 @@ Code rules (most enforced by oxlint; write code this way from the start):
 New packages (`apps/*`, `packages/*`) must:
 
 - extend the base config: `"extends": "../../tsconfig.base.json"` (plus their own `module` / `moduleResolution`; decorators for the backend);
-- define the scripts turbo runs: `lint` (`oxlint --deny-warnings .`; backend adds `--type-aware`), `typecheck` (`tsc --noEmit`), `format` (`prettier --write .`), and `test` (`vitest run`) once the package has tests.
+- define the scripts turbo runs: `lint` (`oxlint --deny-warnings .`; backend adds `--type-aware`), `typecheck` (`tsc --noEmit`), and `test` (`vitest run`) once the package has tests. No `format` script: Prettier runs once from the root (`pnpm format`), where it reads the root `.gitignore` and `.prettierignore`.
 
 ## Backend (`apps/backend`)
 
@@ -122,6 +122,7 @@ pnpm install
 pnpm dev                       # all apps via turbo
 pnpm --filter backend dev
 pnpm --filter frontend dev
-pnpm lint / pnpm typecheck / pnpm test / pnpm format
+pnpm lint / pnpm typecheck / pnpm test
+pnpm format / pnpm format:check  # write / check only
 pnpm --filter backend db:generate | db:migrate | db:seed
 ```

@@ -1,0 +1,36 @@
+{
+    "name": "@school-journal/shared",
+    "version": "0.0.0",
+    "private": true,
+    "description": "Enums, constants and zod schemas shared by the backend and frontend",
+    "type": "module",
+    "sideEffects": false,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist",
+        "src"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+        "typecheck": "tsc --noEmit",
+        "lint": "oxlint --deny-warnings .",
+        "test": "vitest run",
+        "check:package": "publint --strict && attw --pack . --profile esm-only"
+    },
+    "dependencies": {
+        "zod": "^4.6.7"
+    },
+    "devDependencies": {
+        "@arethetypeswrong/cli": "^0.18.5",
+        "@types/node": "^24.19.2",
+        "publint": "^0.3.25",
+        "typescript": "^7.0.2"
+    }
+}
