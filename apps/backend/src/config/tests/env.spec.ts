@@ -3,14 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // A local .env must not leak into the tests
 vi.mock("dotenv/config", () => ({}));
 
-const ENV_KEYS = ["NODE_ENV", "PORT", "CLIENT_URL", "LOG_LEVEL"] as const;
+const ENV_KEYS = ["NODE_ENV", "PORT", "CLIENT_URL", "DATABASE_URL", "LOG_LEVEL"] as const;
+
+const DATABASE_URL = "postgresql://user:password@db.test/journal";
 
 type EnvInput = Partial<Record<(typeof ENV_KEYS)[number], string>>;
 
-// env.ts validates on import, so each call loads a fresh copy of the module
+// env.ts validates on import, so each call loads a fresh copy of the module;
+// DATABASE_URL is required, so it gets a valid value unless the test sets it
 const loadEnv = async (values: EnvInput) => {
+    const input: EnvInput = { DATABASE_URL, ...values };
+
     for (const key of ENV_KEYS) {
-        vi.stubEnv(key, values[key]);
+        vi.stubEnv(key, input[key]);
     }
 
     vi.resetModules();
@@ -34,6 +39,7 @@ describe("env", () => {
             NODE_ENV: "development",
             PORT: 4000,
             CLIENT_URL: "http://localhost:3000",
+            DATABASE_URL,
         });
     });
 
@@ -61,6 +67,26 @@ describe("env", () => {
 
         expect(env.CLIENT_URL).toBe("https://journal.test");
     });
+
+    it("rejects a missing DATABASE_URL", async () => {
+        await expect(loadEnv({ DATABASE_URL: undefined })).rejects.toThrow(/DATABASE_URL/);
+    });
+
+    it.each(["mysql://user@db.test/journal", "https://db.test", "not-a-url"])(
+        "rejects DATABASE_URL=%s",
+        async (databaseUrl) => {
+            await expect(loadEnv({ DATABASE_URL: databaseUrl })).rejects.toThrow(/DATABASE_URL/);
+        },
+    );
+
+    it.each(["postgres://user@db.test/journal", "postgresql://user@db.test/journal"])(
+        "accepts DATABASE_URL=%s",
+        async (databaseUrl) => {
+            const { env } = await loadEnv({ DATABASE_URL: databaseUrl });
+
+            expect(env.DATABASE_URL).toBe(databaseUrl);
+        },
+    );
 
     it("rejects an unknown NODE_ENV", async () => {
         await expect(loadEnv({ NODE_ENV: "staging" })).rejects.toThrow(/NODE_ENV/);

@@ -1,12 +1,22 @@
 import { Controller, Get, HttpStatus, INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppModule } from "../src/app.module.js";
 import { configureApp } from "../src/config/app.js";
 import { env } from "../src/config/env.js";
+import { errors } from "../src/constants/errors.js";
 import { globalThrottler } from "../src/constants/index.js";
+
+// Each test creates and closes its own app, and closing ends the pool,
+// so the tests use a fake pool and a DB that answers unless a test says otherwise
+const { execute } = vi.hoisted(() => ({ execute: vi.fn().mockResolvedValue({ rows: [] }) }));
+
+vi.mock("../src/db/index.js", () => ({
+    db: { execute },
+    pool: { on: vi.fn(), end: vi.fn().mockResolvedValue(undefined) },
+}));
 
 // Test-only route that keeps the global throttler
 @Controller("throttled")
@@ -56,6 +66,19 @@ describe("app (e2e)", () => {
 
         expect(response.status).toBe(HttpStatus.OK);
         expect(response.body).toEqual({ status: "ok" });
+    });
+
+    it("GET /api/health returns 503 with DATABASE_UNAVAILABLE when the DB query fails", async () => {
+        execute.mockRejectedValueOnce(new Error("connection refused"));
+        const server = await createApp();
+
+        const response = await request(server).get("/api/health");
+
+        expect(response.status).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+        expect(response.body).toEqual({
+            statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+            message: errors.DATABASE_UNAVAILABLE,
+        });
     });
 
     it("an unknown route returns 404 in the unified error shape", async () => {
