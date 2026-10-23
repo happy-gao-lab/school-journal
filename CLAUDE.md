@@ -4,7 +4,7 @@ Online school journal for tracking student progress. Roles: **admin, teacher, st
 
 - Global plan (roles, concepts, domain model, structure): [docs/PLAN.md](docs/PLAN.md)
 - Backend tickets: [docs/BE_TICKETS.md](docs/BE_TICKETS.md) · Frontend tickets: [docs/FE_TICKETS.md](docs/FE_TICKETS.md)
-- Project Claude commands (`/ticket-update`, `/ticket-review`, `/ticket-tests`) and useful built-ins: [docs/COMMANDS.md](docs/COMMANDS.md)
+- Project Claude commands (`/ticket-update`, `/ticket-review`, `/ticket-tests`, `/ticket-push`) and useful built-ins: [docs/COMMANDS.md](docs/COMMANDS.md)
 
 ## Workflow
 
