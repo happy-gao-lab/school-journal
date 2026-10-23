@@ -7,16 +7,23 @@ Online school journal for tracking student progress. Roles: **admin, teacher, st
 - Project Claude commands (`/ticket-update`, `/ticket-review`, `/ticket-tests`) and useful built-ins: [docs/COMMANDS.md](docs/COMMANDS.md)
 
 ## Workflow
+
 - Work is done **one ticket at a time** (`BE-<block>.<n>` / `FE-<block>.<n>`). Stay inside the ticket's scope; anything extra → note it, don't build it.
 - BE and FE are separate tickets — never mix backend and frontend changes in one task.
 - Before starting, read the block overview (goal, shared context) and the ticket's dependencies.
 - Tickets live in Jira project `SJ` (https://happygaodev.atlassian.net): blocks are epics, tickets are tasks whose summary starts with the ticket ID (e.g. `BE-1.3 Registration`), dependencies are "Blocks" links. **Jira is the source of truth for status**; the ticket files are documentation only and have no statuses.
 - At the start of each ticket we discuss its details. When asked, apply the agreed changes to **both** the Jira task and its section in the ticket file, keeping them in sync. Don't update either on your own.
-- One branch per ticket, created from an up-to-date `main`: `<jira-key>-<ticket-id>-<short-title>`, lowercase kebab-case (e.g. `SJ-19-be-0.3-nestjs-scaffold`). The Jira key stays uppercase so Jira can link the branch, and commit messages start with the same key (`SJ-19 ...`). Check the working tree is clean first. **Never create a branch without asking:** show the exact branch name (and base) and wait for a yes.
+- Branch flow: `dev` → epic → ticket. One branch per epic (block), created from an up-to-date `dev`; one branch per ticket, created from its epic branch. Merge in reverse order: ticket → epic, then epic → `dev`. An epic is merged into `dev` only after all of its tickets are completed.
+- Branch names are lowercase kebab-case; the Jira key stays uppercase so Jira can link the branch:
+    - epic: `<epic-key>-<block-id>-<short-title>` (e.g. `SJ-1-be-0-setup`)
+    - ticket: `<jira-key>-<ticket-id>-<short-title>` (e.g. `SJ-19-be-0.3-nestjs-scaffold`)
+- Commit messages start with the ticket's Jira key (`SJ-19 ...`).
+- Check the working tree is clean first. **Never create a branch without asking:** show the exact branch name (and base) and wait for a yes.
 - **Tests only on explicit request.**
 - If a ticket conflicts with docs/PLAN.md or with reality in code — stop and ask; update the docs after the decision.
 
 ## Domain rules (short)
+
 - Sign-in: username + password. Email required for teacher and parent, optional for student.
 - Registration → status `pending` → admin reviews/edits → `approved` / `rejected`. Only approved users sign in. First admin via seed.
 - Student picks own class at registration (admin can correct). One class per student.
@@ -28,6 +35,7 @@ Online school journal for tracking student progress. Roles: **admin, teacher, st
 - Admin sees everything.
 
 ## Monorepo
+
 pnpm workspaces + Turborepo.
 
 ```
@@ -35,20 +43,45 @@ apps/backend     NestJS
 apps/frontend    Next.js
 packages/shared  @school-journal/shared — enums, constants, zod schemas + inferred types
 ```
+
 Shared things (roles, statuses, thresholds, request schemas) live only in `packages/shared` — never duplicate them in an app.
 
 ### Reuse first — no duplicates
+
 - Before writing a helper or component, check the existing `utils/` (FE and BE) and `components/shared/` (FE) for one that already does it.
 - Backend: functions used in more than one place go to `apps/backend/src/utils/` (one file per topic, e.g. `utils/date.ts`).
 - Frontend: functions used in more than one place go to `apps/frontend/src/utils/` (one file per topic, e.g. `utils/grades.ts`).
 - Frontend: components used by more than one page or feature go to `components/shared/`.
 - Don't extract one-off code just in case — move it to `utils/` or `shared/` once a second usage appears.
 
-## Backend (`apps/backend`)
-Stack: NestJS, Drizzle ORM, PostgreSQL on Neon (serverless driver), nestjs-pino, throttler, JWT access + refresh with DB sessions.
-Reference project for structure and style: `/home/dev/Documents/coding/pet/pw-backend/src`.
+### Code style & tooling
 
-Conventions (follow pw-backend):
+Configs live at the root: `tsconfig.base.json`, `.prettierrc`, `.oxlintrc.json` (+ local rules in `lint/oxlint-plugin.mjs`), `.editorconfig`, `.nvmrc` (Node 24). `pnpm lint` fails on any warning (`--deny-warnings`). The husky pre-commit hook runs Prettier and oxlint on staged files — never bypass it with `--no-verify`.
+
+Formatting (Prettier, applies to BE and FE): 4 spaces, double quotes, semicolons, 100 columns, trailing commas, final newline. Import groups are sorted automatically: `react` → `next` → builtins / third-party → `@school-journal/*` → `@/*` → relative.
+
+Code rules (most enforced by oxlint; write code this way from the start):
+
+- Functions are arrow functions assigned to `const`, React components included — no `function` declarations. Default exports go on their own line: `const Page = () => …;` then `export default Page;`.
+- Functions with a block body are never passed inline as an argument — extract a named function. One-line arrows are fine: `items.map((item) => <Row key={item.id} … />)`, `.filter((user) => user.isActive)`. Exceptions: React hook callbacks (`useEffect(() => { … }, [deps])`) stay inline so `exhaustive-deps` can check them; `db.transaction(async (tx) => { … })`, `new Promise((resolve) => { … })` and test files (`*.spec.*`, `*.test.*`, `test/`, `tests/`) are allowed too.
+- No functions created inline in JSX event-handler props (`on*`) — pass a named handler (`onClick={handleSave}`) or a handler factory (`onDelete={handleDelete(item.id)}`). Render props (e.g. the UI kit's `<FormField render={…} />`) are fine.
+- No one-letter names — variables, parameters and type parameters (`TItem`, not `T`). Only `_` is allowed, as is a leading `_` for intentionally unused parameters. Object property names aren't checked (`{ x, y }` from external shapes is fine).
+- No `any`, `var`, `==`, or `console.*` (BE logs through pino).
+- Backend: every promise is awaited or explicitly marked `void` (`no-floating-promises`, type-aware).
+- Imports: backend and `packages/shared` use relative imports ending in `.js` — no TS path aliases (`tsc` doesn't rewrite them, so Node fails at runtime). The frontend may use `@/*`.
+- Don't use or enforce `import type` (`consistent-type-imports` is off): in the backend it erases classes that Nest DI needs at runtime.
+
+New packages (`apps/*`, `packages/*`) must:
+
+- extend the base config: `"extends": "../../tsconfig.base.json"` (plus their own `module` / `moduleResolution`; decorators for the backend);
+- define the scripts turbo runs: `lint` (`oxlint --deny-warnings .`; backend adds `--type-aware`), `typecheck` (`tsc --noEmit`), `format` (`prettier --write .`), and `test` (`vitest run`) once the package has tests.
+
+## Backend (`apps/backend`)
+
+Stack: NestJS, Drizzle ORM, PostgreSQL on Neon (serverless driver), nestjs-pino, throttler, JWT access + refresh with DB sessions.
+
+Conventions:
+
 - ESM — relative imports end with `.js`.
 - Module per feature folder: `<feature>/<feature>.controller.ts`, `.service.ts`, `.module.ts`, `dto.ts`.
 - Cross-cutting code: `common/` (guards, decorators), `filters/`, `constants/` (`errors.ts` messages map, `index.ts` config constants), `utils/` (shared pure functions, no Nest dependencies).
@@ -60,6 +93,7 @@ Conventions (follow pw-backend):
 - Schema changes: `db:generate` then `db:migrate` — never edit generated migrations by hand.
 
 ## Frontend (`apps/frontend`)
+
 Stack: Next.js (App Router), axios, React Query, shadcn/ui, Tailwind, React Hook Form + zod.
 
 ```
@@ -73,18 +107,21 @@ src/
   lib/          shadcn internals only (`cn`)
   types/
 ```
+
 Conventions:
+
 - Pages never fetch directly: `components/pages/*` → `hooks/*` → `api/*`.
 - Forms: RHF + zod resolver with schemas from `@school-journal/shared`; use the UI kit form fields.
 - Use UI kit components and theme tokens — no hard-coded colors; must work in light/dark and at phone width.
 - Every data view handles loading / empty / error states.
 
 ## Commands (once BE-0 / FE-0 are done)
+
 ```
 pnpm install
 pnpm dev                       # all apps via turbo
 pnpm --filter backend dev
 pnpm --filter frontend dev
-pnpm lint / pnpm format
+pnpm lint / pnpm typecheck / pnpm test / pnpm format
 pnpm --filter backend db:generate | db:migrate | db:seed
 ```
