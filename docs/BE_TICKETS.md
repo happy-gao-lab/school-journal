@@ -75,14 +75,14 @@ Working monorepo with a running NestJS app connected to Neon, plus a shared pack
 **Scope**
 
 - `packages/shared` (`@school-journal/shared`) compiled with `tsc` to ESM in `dist/` (`NodeNext`, `.js` relative imports), usable from NestJS and Next.js
-- `package.json` `exports` map (`types` first, then `import`), declarations + declaration maps; packaging checked with `publint` / `@arethetypeswrong/cli`
+- `package.json` `exports` map (`types` first, then `default`), declarations + declaration maps; packaging checked with `publint` / `@arethetypeswrong/cli`
 - Single root entry point (no subpath exports yet)
 - Enums as `as const` objects with a matching union type and a tuple for `z.enum` / Drizzle:
     - `Role` (admin, teacher, student, parent) + `ROLES`
     - `UserStatus` (pending, approved, rejected) + `USER_STATUSES`
 - Constants: `GRADE_MIN` = 1, `GRADE_MAX` = 100, `WEAK_TOPIC_THRESHOLD` = 60 (average < 60), `STRONG_TOPIC_THRESHOLD` = 85 (average ≥ 85)
 - `schemas/` folder for zod schemas (filled by later tickets); `zod` v4 as a dependency
-- Scripts `build`, `dev` (`tsc --watch`), `typecheck`, `lint`, `format` wired into turbo
+- Scripts `build`, `dev` (`tsc --watch`), `typecheck`, `lint`, `check:package` wired into turbo; formatting runs from the root (`pnpm format` / `pnpm format:check`)
 
 **Acceptance criteria**
 
