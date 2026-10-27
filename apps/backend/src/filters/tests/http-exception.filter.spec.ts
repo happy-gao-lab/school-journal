@@ -35,6 +35,13 @@ const queryError = (cause: Error) => new DrizzleQueryError("select 1", [], cause
 
 const withCode = (message: string, code: string) => Object.assign(new Error(message), { code });
 
+// What the filter logs for a failed query: the SQL and the cause's code and message, no bound values
+const dbErrorLog = (exception: DrizzleQueryError) => {
+    const { code, message } = exception.cause as { code?: string; message: string };
+
+    return { dbError: { query: "select 1", code, constraint: undefined, message } };
+};
+
 const genericResponse = {
     statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
     message: errors.SOMETHING_WENT_WRONG,
@@ -113,7 +120,7 @@ describe("HttpExceptionFilter", () => {
 
             expect(json).toHaveBeenCalledWith(genericResponse);
             expect(logError).toHaveBeenCalledWith(
-                { err: exception },
+                dbErrorLog(exception),
                 logMessages.DATABASE_UNAVAILABLE,
             );
         }
@@ -124,7 +131,7 @@ describe("HttpExceptionFilter", () => {
             const exception = queryError(withCode("server gone", code));
 
             expect(runFilter(exception).logError).toHaveBeenCalledWith(
-                { err: exception },
+                dbErrorLog(exception),
                 logMessages.DATABASE_UNAVAILABLE,
             );
         }
@@ -136,9 +143,41 @@ describe("HttpExceptionFilter", () => {
 
         expect(json).toHaveBeenCalledWith(genericResponse);
         expect(logError).toHaveBeenCalledWith(
-            { err: exception },
+            dbErrorLog(exception),
             logMessages.DATABASE_QUERY_FAILED,
         );
+    });
+
+    it("never logs the values bound to a failed query", () => {
+        const cause = Object.assign(new Error('null value in column "phone"'), {
+            code: "23502",
+            constraint: "users_phone_check",
+            detail: "Failing row contains (Ivan.P, $2b$12$secret-hash, ivan@school.com)",
+        });
+        const exception = new DrizzleQueryError(
+            "insert into users (username, password_hash, email) values ($1, $2, $3)",
+            ["Ivan.P", "$2b$12$secret-hash", "ivan@school.com"],
+            cause,
+        );
+
+        const { logError } = runFilter(exception);
+        const logged = JSON.stringify(logError.mock.calls);
+
+        expect(logError).toHaveBeenCalledWith(
+            {
+                dbError: {
+                    query: exception.query,
+                    code: "23502",
+                    constraint: "users_phone_check",
+                    message: cause.message,
+                },
+            },
+            logMessages.DATABASE_QUERY_FAILED,
+        );
+
+        for (const value of ["Ivan.P", "$2b$12$secret-hash", "ivan@school.com"]) {
+            expect(logged).not.toContain(value);
+        }
     });
 
     it("keeps the status and message of an exposed middleware 4xx error, without logging", () => {
