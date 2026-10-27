@@ -11,8 +11,8 @@
         "lint": "oxlint --deny-warnings --type-aware .",
         "test": "vitest run",
         "test:e2e": "vitest run -c vitest.config.e2e.ts",
-        "db:generate": "drizzle-kit generate",
-        "db:migrate": "drizzle-kit migrate"
+        "db:generate": "pnpm --filter @school-journal/shared build && drizzle-kit generate",
+        "db:migrate": "pnpm --filter @school-journal/shared build && drizzle-kit migrate"
     },
     "dependencies": {
         "@neondatabase/serverless": "^1.2.0",
