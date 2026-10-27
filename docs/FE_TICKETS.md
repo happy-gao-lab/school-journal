@@ -198,7 +198,7 @@ Users register, sign in, stay signed in and only reach pages for their role.
 **Scope**
 
 - Role picker (teacher / student / parent) switches the form fields
-- Email required for teacher and parent, optional for student
+- Email and phone required for teacher and parent, optional for student
 - Student picks a class (public classes list)
 - Success screen: "Your account is waiting for admin approval"
 

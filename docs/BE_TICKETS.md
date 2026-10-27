@@ -187,7 +187,7 @@ Users register with a role and sign in once approved; routes are protected by au
 ## Shared context
 
 - Tables: `users`, `sessions`; minimal `classes` + `student_classes` (needed at student registration; class CRUD comes in BE-3)
-- Username + password; email required for teacher and parent, optional for student
+- Username + password; email and phone required for teacher and parent, optional for student
 - Only `approved` users can sign in
 - Auth building blocks: `session.service`, `token.service`, `auth.guard`
 
@@ -275,24 +275,33 @@ Users register with a role and sign in once approved; routes are protected by au
 
 **Goal:** Anyone can register as teacher, student or parent; the account waits for admin approval.
 
-**API**
+**Scope**
 
-- `POST /auth/register`
-
-**Rules**
-
+- `POST /auth/register` in a new `auth/` module (controller, service, module), Swagger tag `auth`
 - Role is one of teacher / student / parent (admin can't self-register)
-- Email required for teacher and parent, optional for student
-- Student must provide an existing `classId` → row in `student_classes`
-- Password hashed (bcrypt); user created with status `pending`
-- Zod schema lives in the shared package (discriminated by role)
+- Zod schema in `@school-journal/shared`, discriminated by role; length limits and patterns as shared constants
+- Teacher and parent: email and phone required
+- Student: email and phone optional (missing, `null`, blank or empty counts as not given; same for middle name); `classId` required, at most 2147483647 (`DB_ID_MAX`, the Postgres integer limit), and must be a class of the current school year (`currentSchoolYear()`) → row in `student_classes`, written in the same transaction as the user
+- Username: 3–32 characters, `[a-zA-Z0-9._-]` with at least one letter or digit, trimmed; case kept, uniqueness ignores case
+- Password: at least 8 characters and at most 72 bytes (bcrypt reads only the first 72 bytes; non-Latin letters and emoji take 2–4 bytes each), at least one uppercase letter, one lowercase letter (English or Ukrainian) and one digit; hashed with bcrypt (cost 12)
+- Phone: `+` followed by digits only (e.g. `+380671234567`), 7–20 characters in total; trimmed
+- First and last name required, middle name optional; all trimmed and NFC-normalised. Names: English or Ukrainian letters (33 letters; Russian-only letters left out), spaces, `-`, `.` and apostrophes (`'`, U+2019, U+02BC), with at least one letter. Email trimmed and lowercased
+- User created with status `pending`
+- Duplicate username / email checked up front → 409 `USERNAME_TAKEN` / `EMAIL_TAKEN`; a unique violation (`23505`) from a concurrent registration is also mapped to 409; these errors and the 400 for the class name the field like validation errors (`errors: { username | email | classId }`)
+- Response `201 { status: "pending", message }` (`RegisterResponse` type in shared); no tokens
+- Stricter auth throttling: `authThrottler` constants in `constants/index.ts`; register limited to 30 requests / hour per IP (a whole class can register from one school network) → 429 `TOO_MANY_REQUESTS` (login limit comes in BE-1.4)
+- Not here: `session.service`, `token.service` (BE-1.4), guards and decorators (BE-1.7)
 
 **Acceptance criteria**
 
-- [ ] Duplicate username/email → 409
-- [ ] Teacher/parent without email → 400
-- [ ] Student without/with unknown class → 400
-- [ ] Response doesn't return tokens; it says the account awaits approval
+- [ ] Valid registration creates a `pending` user (and a `student_classes` row for a student); the response has no tokens and says the account awaits approval
+- [ ] Duplicate username/email → 409, also when only the case differs
+- [ ] Teacher/parent without email or phone → 400
+- [ ] Student without a class, with an unknown class or with a class of another school year → 400
+- [ ] Password not meeting the rules → 400; phone not in the `+digits` format → 400
+- [ ] Role `admin` → 400
+- [ ] Name with unsupported characters (other alphabets, digits, control characters) → 400
+- [ ] The 31st registration from one IP within an hour → 429
 
 ---
 
