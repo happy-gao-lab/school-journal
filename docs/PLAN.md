@@ -35,7 +35,7 @@ Assumptions (for now): one teacher per subject; one class per student; a parent 
 users           id, username (unique), passwordHash, email?, firstName, lastName,
                 role (admin|teacher|student|parent), status (pending|approved|rejected)
 sessions        one row per sign-in: user, current refresh `tokenId`, expiry, revocation
-classes         id, name ("7-A"), year
+classes         id, name ("7-A"), level (0–13), year
 student_classes studentId → classId   (or classId column on a student profile)
 subjects        id, name, teacherId → users
 class_subjects  classId, subjectId    (which classes study which subject)

@@ -12,7 +12,8 @@
         "test": "vitest run",
         "test:e2e": "vitest run -c vitest.config.e2e.ts",
         "db:generate": "pnpm --filter @school-journal/shared build && drizzle-kit generate",
-        "db:migrate": "pnpm --filter @school-journal/shared build && drizzle-kit migrate"
+        "db:migrate": "pnpm --filter @school-journal/shared build && drizzle-kit migrate",
+        "db:seed": "pnpm --filter @school-journal/shared build && tsx src/db/seed.ts"
     },
     "dependencies": {
         "@neondatabase/serverless": "^1.2.0",
@@ -29,6 +30,7 @@
         "pino-http": "^11.0.0",
         "reflect-metadata": "^0.2.2",
         "rxjs": "^7.8.2",
+        "tsx": "^4.23.15",
         "zod": "^4.6.7"
     },
     "devDependencies": {
