@@ -214,15 +214,30 @@ Users register with a role and sign in once approved; routes are protected by au
 
 **Scope**
 
-- `users`: id, username (unique), passwordHash, email (nullable, unique), firstName, lastName, role, status, failedLoginAttempts, lockedUntil, timestamps
-- `sessions`: id, userId (FK → users, cascade, indexed), tokenId (uuid of the current refresh token), expiresAt, revokedAt (nullable), createdAt
-- `classes`: id, name, year (minimal)
-- `student_classes`: studentId (unique), classId
-- Migration
+- `timestamps` column helper in `db/schemas/columns.ts`: `created_at` / `updated_at`, `updated_at` auto-updates on change
+- All timestamps are `timestamptz` (`withTimezone: true`, `mode: "string"`)
+- Integer identity primary keys (`generatedAlwaysAsIdentity`)
+- Postgres enums `role` and `user_status` from `ROLES` / `USER_STATUSES` in `@school-journal/shared`
+- `users` — one table for all roles:
+    - username (unique, case-insensitive via `lower()`), password_hash
+    - email (nullable, unique, case-insensitive via `lower()`), phone (nullable, not unique)
+    - first_name, last_name, middle_name (nullable)
+    - role, status (default `pending`)
+    - rejection_reason (nullable), rejected_at (nullable; starts the 30-day timer before a rejected user is deleted)
+    - failed_login_attempts (default 0), locked_until (nullable)
+    - timestamps
+    - index on (role, status)
+- `sessions`: id, user_id (FK → users, cascade, indexed), token_id (uuid of the current refresh token), expires_at, revoked_at (nullable), created_at
+- `classes`: id, name (e.g. `7-A`), year (school year start, e.g. `2026`), timestamps; unique (name, year)
+- `student_classes`: student_id (PK, FK → users, cascade), class_id (FK → classes, restrict), timestamps; current class only
+- Role-dependent rules (required email / phone for teacher and parent, class for student) are not DB constraints; they live in zod schemas and services
+- Migration via `db:generate` + `db:migrate`
+- Not here: sample classes (BE-1.8 seed), class history per school year (later)
 
 **Acceptance criteria**
 
 - [ ] Migration applies cleanly on an empty DB
+- [ ] `username` / `email` uniqueness ignores case (`Ivan` and `ivan` conflict)
 
 ---
 
