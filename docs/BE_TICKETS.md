@@ -202,7 +202,7 @@ Users register with a role and sign in once approved; routes are protected by au
 | BE-1.5 | Refresh                       | BE-1.4         |
 | BE-1.6 | Logout                        | BE-1.4         |
 | BE-1.7 | Me + roles guard & decorators | BE-1.4         |
-| BE-1.8 | Admin seed                    | BE-1.1         |
+| BE-1.8 | Admin seed                    | BE-1.1, BE-1.2 |
 
 ---
 
@@ -232,7 +232,7 @@ Users register with a role and sign in once approved; routes are protected by au
 - `student_classes`: student_id (PK, FK → users, cascade), class_id (FK → classes, restrict), timestamps; current class only
 - Role-dependent rules (required email / phone for teacher and parent, class for student) are not DB constraints; they live in zod schemas and services
 - Migration via `db:generate` + `db:migrate`
-- Not here: sample classes (BE-1.8 seed), class history per school year (later)
+- Not here: `classes.level` and sample classes (BE-1.2), class history per school year (later)
 
 **Acceptance criteria**
 
@@ -247,13 +247,25 @@ Users register with a role and sign in once approved; routes are protected by au
 
 **Goal:** Registration form can show classes to pick from.
 
-**API**
+**Scope**
 
-- `GET /classes/public` — id + name, no auth
+- `GET /classes/public` — no auth; returns a plain array `[{ id, name }]` (`[]` when there are none); global throttle limit
+- Only classes of the current school year: `currentSchoolYear()` with `SCHOOL_YEAR_START_MONTH = 9` (September), both in `@school-journal/shared`
+- `classes.level` — required `smallint`, `CLASS_LEVEL_MIN` (0) … `CLASS_LEVEL_MAX` (13) in shared: the school level set by the admin, so class names can follow any school system (`1-A`, `K-1`, `Year 7`, `CP`); migration via `db:generate` + `db:migrate`
+- Sorted by `level`, then by `name` with a numeric-aware comparison using `DEFAULT_LOCALE` (`en`) from shared (`7-A` before `10-A`)
+- `PublicClass` response type in `@school-journal/shared`
+- `classes/` module (controller, service, module), Swagger tag `classes`
+- `db:seed` script (`src/db/seed.ts`, run with `tsx`): `pnpm db:seed --samples` adds sample classes for the current school year, levels 1–11 with letters A and B (`1-A` … `11-B`); samples are opt-in (a plain `db:seed` never adds them) and skipped in production; idempotent (existing name + year skipped); BE-1.8 adds the admin to this script
+- Global `HttpExceptionFilter`: database errors still return 500 `SOMETHING_WENT_WRONG`, but are logged as `Database unavailable` (connection failures) or `Database query failed` (errors Postgres reports for the query)
+- Not here: `level` in class create / edit (BE-3.1)
 
 **Acceptance criteria**
 
-- [ ] Returns classes sorted by name without authentication
+- [ ] Returns the current school year's classes without authentication, sorted by level then name (level 0 first; `1-A` < `2-A` < `10-A`)
+- [ ] Classes of other school years are not returned
+- [ ] The migration adding `level` applies cleanly
+- [ ] Running `db:seed --samples` twice creates each sample class once; a plain `db:seed` adds none
+- [ ] With the database unreachable, the endpoint returns 500 `SOMETHING_WENT_WRONG` and the log says `Database unavailable`
 
 ---
 
@@ -359,13 +371,13 @@ Users register with a role and sign in once approved; routes are protected by au
 
 ## [BE-1.8] Admin seed
 
-**Block:** BE-1 · **Depends on:** BE-1.1
+**Block:** BE-1 · **Depends on:** BE-1.1, BE-1.2
 
 **Goal:** The first admin exists without self-registration.
 
 **Scope**
 
-- `db:seed` script; credentials from env; idempotent
+- Adds the admin to the `db:seed` script from BE-1.2; credentials from env; idempotent; runs in production too
 
 **Acceptance criteria**
 
@@ -491,6 +503,7 @@ Admin manages classes and subjects and wires them together: teacher → subject,
 **Rules**
 
 - Name unique per year
+- `level` required on create (0–13)
 - Can't delete a class with students → 409
 
 **Acceptance criteria**

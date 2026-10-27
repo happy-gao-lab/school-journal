@@ -58,10 +58,12 @@ pnpm workspaces + Turborepo.
 ```
 apps/backend     NestJS
 apps/frontend    Next.js
-packages/shared  @school-journal/shared — enums, constants, zod schemas + inferred types
+packages/shared  @school-journal/shared — enums, constants, zod schemas + inferred types, response types, pure utils
 ```
 
-Shared things (roles, statuses, thresholds, request schemas) live only in `packages/shared` — never duplicate them in an app.
+Anything both apps can use (roles, statuses, thresholds, request schemas, response types, pure helpers such as `currentSchoolYear()`) lives only in `packages/shared` — never duplicate it in an app.
+
+The app is English-only: UI text, sample data, examples and docs are in English, and text sorting / formatting uses `DEFAULT_LOCALE` (`en`) from `packages/shared`.
 
 ### Reuse first — no duplicates
 
