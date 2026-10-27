@@ -22,6 +22,10 @@ import {
 
 import { timestamps, timestamptz } from "./columns.js";
 
+// Exported so services can tell which unique index a 23505 violation came from
+export const USERNAME_UNIQUE_INDEX = "users_username_lower_unique";
+export const EMAIL_UNIQUE_INDEX = "users_email_lower_unique";
+
 export const roleEnum = pgEnum("role", ROLES);
 export const userStatusEnum = pgEnum("user_status", USER_STATUSES);
 
@@ -48,8 +52,8 @@ export const usersTable = pgTable(
     },
     (table) => [
         // case-insensitive uniqueness: "Ivan" and "ivan" conflict; several NULL emails are allowed
-        uniqueIndex("users_username_lower_unique").on(sql`lower(${table.username})`),
-        uniqueIndex("users_email_lower_unique").on(sql`lower(${table.email})`),
+        uniqueIndex(USERNAME_UNIQUE_INDEX).on(sql`lower(${table.username})`),
+        uniqueIndex(EMAIL_UNIQUE_INDEX).on(sql`lower(${table.email})`),
         index("users_role_status_idx").on(table.role, table.status),
         // rejected_at is set exactly for rejected users, so the cleanup job never misses one
         check(

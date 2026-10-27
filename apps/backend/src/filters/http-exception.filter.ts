@@ -5,6 +5,7 @@ import { InjectPinoLogger, PinoLogger } from "nestjs-pino";
 
 import { FieldErrors } from "../common/pipes/zod-validation.pipe.js";
 import { errors } from "../constants/errors.js";
+import { loggableDbErrorOf, pgErrorOf } from "../utils/db.js";
 
 type ClientError = { status: number; message: string };
 
@@ -32,11 +33,13 @@ const SQLSTATE = /^[0-9A-Z]{5}$/;
 const UNAVAILABLE_SQLSTATE = /^(08|57P)/;
 
 const logMessageFor = (exception: unknown) => {
-    if (!(exception instanceof DrizzleQueryError)) {
+    const pgError = pgErrorOf(exception);
+
+    if (!pgError) {
         return logMessages.UNHANDLED_EXCEPTION;
     }
 
-    const code = (exception.cause as { code?: unknown } | undefined)?.code;
+    const { code } = pgError;
     const isQueryError =
         typeof code === "string" && SQLSTATE.test(code) && !UNAVAILABLE_SQLSTATE.test(code);
 
@@ -106,7 +109,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
         }
 
         // Unknown errors are logged, their details never reach the client
-        this.logger.error({ err: exception }, logMessageFor(exception));
+        const logPayload =
+            exception instanceof DrizzleQueryError
+                ? { dbError: loggableDbErrorOf(exception) }
+                : { err: exception };
+
+        this.logger.error(logPayload, logMessageFor(exception));
 
         response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
             statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
