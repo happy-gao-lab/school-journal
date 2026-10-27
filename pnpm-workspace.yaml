@@ -4,3 +4,4 @@ packages:
 # Dependencies whose install scripts are not run (false) or allowed (true)
 allowBuilds:
     "@scarf/scarf": false
+    esbuild: false

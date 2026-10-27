@@ -1,0 +1,76 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "a8f5df45-ecc5-4acd-9445-b8ed00ef74b1",
+  "prevIds": [
+    "2f8290d7-c776-44ce-941e-8c540ce852cd"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "classes",
+        "level"
+      ],
+      "writes": [
+        "s|col|public.classes.level",
+        "n|col|public.classes.level",
+        "e|col|public.classes.level"
+      ],
+      "reads": [
+        "n|tbl|public.classes",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "classes"
+      ],
+      "writes": [
+        "s|ck|public.classes.classes_level_check",
+        "n|ck|public.classes.classes_level_check",
+        "e|ck|public.classes.classes_level_check",
+        "n|con|public.classes.classes_level_check"
+      ],
+      "reads": [
+        "n|tbl|public.classes",
+        "n|sch|public",
+        "n|col|public.classes.level"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "classes",
+        "name": "level",
+        "type": "smallint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "classes",
+        "name": "classes_level_check",
+        "value": "\"level\" BETWEEN 0 AND 13",
+        "entityType": "checks"
+      }
+    }
+  ]
+}
