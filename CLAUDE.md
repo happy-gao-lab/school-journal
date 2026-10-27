@@ -41,7 +41,7 @@ Ticket lifecycle — each step starts only when the user asks for it; a yes cove
 
 ## Domain rules (short)
 
-- Sign-in: username + password. Email required for teacher and parent, optional for student.
+- Sign-in: username + password. Email and phone required for teacher and parent, optional for student.
 - Registration → status `pending` → admin reviews/edits → `approved` / `rejected`. Only approved users sign in. First admin via seed.
 - Student picks own class at registration (admin can correct). One class per student.
 - One teacher per subject. Subjects are assigned to classes.

@@ -32,13 +32,21 @@ const userValues = (overrides: Partial<CreateUser> = {}): CreateUser => ({
 const insertUser = async (overrides: Partial<CreateUser> = {}) => {
     const [user] = await db.insert(usersTable).values(userValues(overrides)).returning();
 
-    return user!;
+    if (!user) {
+        throw new Error("Test setup: insert into users returned no row");
+    }
+
+    return user;
 };
 
 const insertClass = async (name = "7-A", year = 2026) => {
     const [created] = await db.insert(classesTable).values({ name, level: 7, year }).returning();
 
-    return created!;
+    if (!created) {
+        throw new Error(`Test setup: insert into classes returned no row for "${name}"`);
+    }
+
+    return created;
 };
 
 // Drizzle wraps the driver error; the Postgres constraint name sits on its cause
@@ -50,7 +58,13 @@ const countRows = async (table: string) => {
         `select count(*)::int as count from ${table}`,
     );
 
-    return rows[0]!.count;
+    const [row] = rows;
+
+    if (!row) {
+        throw new Error(`count(*) on "${table}" returned no row`);
+    }
+
+    return row.count;
 };
 
 beforeAll(async () => {
@@ -160,7 +174,11 @@ describe("users", () => {
             .where(eq(usersTable.id, user.id))
             .returning();
 
-        expect(new Date(updated!.updatedAt).getTime()).toBeGreaterThan(new Date(past).getTime());
+        if (!updated) {
+            throw new Error(`Update of user ${user.id} returned no row`);
+        }
+
+        expect(new Date(updated.updatedAt).getTime()).toBeGreaterThan(new Date(past).getTime());
     });
 });
 

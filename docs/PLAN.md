@@ -4,6 +4,8 @@
 
 An online school journal for tracking student progress. Four roles (admin, teacher, student, parent). Built **block by block**: backend blocks (tables → services → controllers) and frontend blocks are separate tasks. This document is the global map; details get worked out per block during execution.
 
+The app is for **Ukrainian and English schools**: the UI and the project itself are English, and text people type (names, passwords) accepts English and Ukrainian letters.
+
 ---
 
 ## 1. Roles & capabilities
@@ -19,7 +21,7 @@ Assumptions (for now): one teacher per subject; one class per student; a parent 
 
 ## 2. Key concepts
 
-- **Auth:** username + password (students may have no email). Email is **required for teachers and parents**, optional for students. JWT access + refresh tokens with DB sessions (`session.service.ts`, `token.service.ts`, `auth.guard.ts`).
+- **Auth:** username + password (students may have no email). Email and phone are **required for teachers and parents**, optional for students. JWT access + refresh tokens with DB sessions (`session.service.ts`, `token.service.ts`, `auth.guard.ts`).
 - **Registration approval:** user registers with a chosen role (student also picks a class) → status `pending` → admin reviews, may edit the data, then sets `approved` / `rejected`. Only `approved` users can sign in. First admin is created by a seed script.
 - **Authorization:** `RolesGuard` + `@Roles()` decorator on top of `AuthGuard`, plus ownership checks in services (teacher only touches own subjects; parent only sees linked children; student only self; admin — everything).
 - **Parent ↔ child link:** student generates a short-lived invite code → parent enters it → link created (the parent account itself is still admin-approved).

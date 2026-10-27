@@ -3,6 +3,7 @@ import { APP_FILTER, APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { LoggerModule } from "nestjs-pino";
 
+import { AuthModule } from "./auth/auth.module.js";
 import { ClassesModule } from "./classes/classes.module.js";
 import { isProduction, logLevel } from "./config/env.js";
 import { errors } from "./constants/errors.js";
@@ -33,6 +34,7 @@ const throttlerModule = {
         ThrottlerModule.forRoot(throttlerModule),
         DbModule,
         HealthModule,
+        AuthModule,
         ClassesModule,
     ],
     providers: [
