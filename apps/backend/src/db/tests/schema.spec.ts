@@ -4,7 +4,13 @@ import { eq, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { Role, USERNAME_MAX_LENGTH, UserStatus } from "@school-journal/shared";
+import {
+    CLASS_LEVEL_MAX,
+    CLASS_LEVEL_MIN,
+    Role,
+    USERNAME_MAX_LENGTH,
+    UserStatus,
+} from "@school-journal/shared";
 
 import { classesTable, studentClassesTable } from "../schemas/class.schemas.js";
 import { sessionsTable } from "../schemas/session.schemas.js";
@@ -30,7 +36,7 @@ const insertUser = async (overrides: Partial<CreateUser> = {}) => {
 };
 
 const insertClass = async (name = "7-A", year = 2026) => {
-    const [created] = await db.insert(classesTable).values({ name, year }).returning();
+    const [created] = await db.insert(classesTable).values({ name, level: 7, year }).returning();
 
     return created!;
 };
@@ -164,6 +170,26 @@ describe("classes and student_classes", () => {
 
         await expectConstraint(insertClass("7-A", 2026), "classes_name_year_unique");
         await expect(insertClass("7-A", 2027)).resolves.toMatchObject({ name: "7-A", year: 2027 });
+    });
+
+    it("accepts a level of exactly the min and the max", async () => {
+        await expect(
+            db.insert(classesTable).values({ name: "K-1", level: CLASS_LEVEL_MIN, year: 2026 }),
+        ).resolves.toBeDefined();
+        await expect(
+            db.insert(classesTable).values({ name: "13-A", level: CLASS_LEVEL_MAX, year: 2026 }),
+        ).resolves.toBeDefined();
+    });
+
+    it("rejects a level below the min or above the max", async () => {
+        await expectConstraint(
+            db.insert(classesTable).values({ name: "X-1", level: CLASS_LEVEL_MIN - 1, year: 2026 }),
+            "classes_level_check",
+        );
+        await expectConstraint(
+            db.insert(classesTable).values({ name: "X-2", level: CLASS_LEVEL_MAX + 1, year: 2026 }),
+            "classes_level_check",
+        );
     });
 
     it("refuses to delete a class that still has a student", async () => {

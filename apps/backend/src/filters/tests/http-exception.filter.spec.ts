@@ -6,11 +6,12 @@ import {
     InternalServerErrorException,
     NotFoundException,
 } from "@nestjs/common";
+import { DrizzleQueryError } from "drizzle-orm";
 import { PinoLogger } from "nestjs-pino";
 import { describe, expect, it, vi } from "vitest";
 
 import { errors } from "../../constants/errors.js";
-import { HttpExceptionFilter } from "../http-exception.filter.js";
+import { HttpExceptionFilter, logMessages } from "../http-exception.filter.js";
 
 // Runs the filter against a fake response and returns what it sent and logged
 const runFilter = (exception: unknown) => {
@@ -28,6 +29,16 @@ const runFilter = (exception: unknown) => {
 
 const httpError = (status: number, message: string, expose: boolean) =>
     Object.assign(new Error(message), { status, expose });
+
+// What Drizzle throws when a query fails, with the driver error as the cause
+const queryError = (cause: Error) => new DrizzleQueryError("select 1", [], cause);
+
+const withCode = (message: string, code: string) => Object.assign(new Error(message), { code });
+
+const genericResponse = {
+    statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+    message: errors.SOMETHING_WENT_WRONG,
+};
 
 describe("HttpExceptionFilter", () => {
     it("returns a 4xx HttpException with its status and message, without logging", () => {
@@ -90,7 +101,44 @@ describe("HttpExceptionFilter", () => {
             statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
             message: errors.SOMETHING_WENT_WRONG,
         });
-        expect(logError).toHaveBeenCalledWith({ err: exception }, "Unhandled exception");
+        expect(logError).toHaveBeenCalledWith({ err: exception }, logMessages.UNHANDLED_EXCEPTION);
+    });
+
+    it("logs a failed connection as database unavailable, with the generic response", () => {
+        const refused = queryError(withCode("connect ECONNREFUSED 127.0.0.1:5432", "ECONNREFUSED"));
+        const noCode = queryError(new Error(""));
+
+        for (const exception of [refused, noCode]) {
+            const { json, logError } = runFilter(exception);
+
+            expect(json).toHaveBeenCalledWith(genericResponse);
+            expect(logError).toHaveBeenCalledWith(
+                { err: exception },
+                logMessages.DATABASE_UNAVAILABLE,
+            );
+        }
+    });
+
+    it("logs Postgres connection and shutdown codes as database unavailable", () => {
+        for (const code of ["08006", "57P01"]) {
+            const exception = queryError(withCode("server gone", code));
+
+            expect(runFilter(exception).logError).toHaveBeenCalledWith(
+                { err: exception },
+                logMessages.DATABASE_UNAVAILABLE,
+            );
+        }
+    });
+
+    it("logs an error Postgres reports for the query as a failed query, with the generic response", () => {
+        const exception = queryError(withCode('relation "nope" does not exist', "42P01"));
+        const { json, logError } = runFilter(exception);
+
+        expect(json).toHaveBeenCalledWith(genericResponse);
+        expect(logError).toHaveBeenCalledWith(
+            { err: exception },
+            logMessages.DATABASE_QUERY_FAILED,
+        );
     });
 
     it("keeps the status and message of an exposed middleware 4xx error, without logging", () => {
