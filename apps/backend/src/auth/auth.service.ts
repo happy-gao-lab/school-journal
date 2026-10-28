@@ -85,6 +85,14 @@ export const refreshLogMessages = {
     SESSION_INACTIVE: "Refresh of a revoked or expired session",
 };
 
+export const logoutLogMessages = {
+    NO_TOKEN: "Logout without a token",
+    INVALID_TOKEN: "Logout with an invalid or expired token",
+    SESSION_REVOKED: "Session revoked on logout",
+    SESSION_INACTIVE: "Logout of a revoked or expired session",
+    REVOKE_FAILED: "Logout could not revoke the session; the cookie is cleared anyway",
+};
+
 // Maps a constraint violation from a concurrent request to the error the up-front checks give
 const conflictOf = (error: unknown) => {
     const pgError = pgErrorOf(error);
@@ -324,5 +332,40 @@ export class AuthService {
         }
 
         return this.issueTokens(session.userId, session.role, session);
+    }
+
+    // Ends the session the refresh token belongs to; never fails for the client, since there is
+    // nothing to end without a valid token. An old token of the session ends it too, as on refresh
+    async logout(token: string | undefined) {
+        if (!token) {
+            this.logger.debug(logoutLogMessages.NO_TOKEN);
+
+            return;
+        }
+
+        const payload = await this.tokenService.verifyRefreshToken(token);
+
+        if (!payload) {
+            this.logger.info(logoutLogMessages.INVALID_TOKEN);
+
+            return;
+        }
+
+        const { sessionId } = payload;
+        let revoked: boolean;
+
+        try {
+            revoked = await this.sessionService.revoke(sessionId);
+        } catch (error) {
+            // the user is signed out anyway; the session stays active on the server until it expires
+            this.logger.error({ err: error, sessionId }, logoutLogMessages.REVOKE_FAILED);
+
+            return;
+        }
+
+        this.logger.info(
+            { sessionId },
+            revoked ? logoutLogMessages.SESSION_REVOKED : logoutLogMessages.SESSION_INACTIVE,
+        );
     }
 }

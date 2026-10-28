@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import {
     ApiForbiddenResponse,
+    ApiNoContentResponse,
     ApiOkResponse,
     ApiResponse,
     ApiTags,
@@ -43,6 +44,16 @@ const setRefreshCookie = (response: Response, token: string, expiresAt: string) 
         ...refreshCookieOptions,
         expires: new Date(expiresAt),
     });
+};
+
+const clearRefreshCookie = (response: Response) => {
+    response.clearCookie(REFRESH_TOKEN_COOKIE, refreshCookieOptions);
+};
+
+const refreshCookieOf = (request: Request) => {
+    const cookie: unknown = request.cookies?.[REFRESH_TOKEN_COOKIE];
+
+    return typeof cookie === "string" ? cookie : undefined;
 };
 
 @ApiTags("auth")
@@ -97,11 +108,9 @@ export class AuthController {
         @Req() request: Request,
         @Res({ passthrough: true }) response: Response,
     ): Promise<LoginResponse> {
-        const cookie: unknown = request.cookies?.[REFRESH_TOKEN_COOKIE];
-
         try {
             const { accessToken, refreshToken, refreshExpiresAt } = await this.authService.refresh(
-                typeof cookie === "string" ? cookie : undefined,
+                refreshCookieOf(request),
             );
 
             setRefreshCookie(response, refreshToken, refreshExpiresAt);
@@ -110,10 +119,27 @@ export class AuthController {
         } catch (error) {
             // other errors (e.g. the database is down) leave the cookie for a retry
             if (error instanceof UnauthorizedException) {
-                response.clearCookie(REFRESH_TOKEN_COOKIE, refreshCookieOptions);
+                clearRefreshCookie(response);
             }
 
             throw error;
         }
+    }
+
+    // Found by the refresh cookie, not the access token, so it works after the access token expired;
+    // a missing or dead token, or a failed revoke, is still a success: the user is always signed out
+    @ApiNoContentResponse({
+        description: `The session is ended and the "${REFRESH_TOKEN_COOKIE}" cookie is cleared`,
+    })
+    @ApiTooManyRequestsResponse({ description: "Too many requests from this IP" })
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @Post("logout")
+    async logout(
+        @Req() request: Request,
+        @Res({ passthrough: true }) response: Response,
+    ): Promise<void> {
+        await this.authService.logout(refreshCookieOf(request));
+
+        clearRefreshCookie(response);
     }
 }
