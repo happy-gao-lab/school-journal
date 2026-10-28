@@ -311,19 +311,33 @@ Users register with a role and sign in once approved; routes are protected by au
 
 **Goal:** Approved users sign in with username + password.
 
-**API**
+**Scope**
 
-- `POST /auth/login` → access + refresh tokens
-
-**Rules**
-
-- `pending` / `rejected` → 403 with a distinct error code for each (FE shows a proper message)
-- Failed-attempt lockout: 5 wrong passwords lock the account for 15 minutes; a successful login resets the counter
+- `POST /auth/login` in the `auth/` module; `loginSchema` in `@school-journal/shared`: username trimmed, password non-empty and at most 72 bytes (registration rules are not re-checked); username looked up ignoring case
+- JWT via `@nestjs/jwt`: `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` in env (required, at least 32 characters; empty placeholders in `.env.example`); TTLs in `constants/index.ts`: access 15 minutes, refresh 30 days
+- Access token payload `{ sub, role, sessionId }`; refresh token payload `{ sub, sessionId, jti }` with `jti` = `sessions.token_id`; session `expires_at` = refresh token expiry
+- `auth/token.service.ts` signs tokens (verification comes in BE-1.5 / BE-1.7); `auth/session.service.ts` creates sessions; `AuthService.login` orchestrates
+- Response: access token in the body (`LoginResponse` type in shared, tokens only; user data comes from `/auth/me` in BE-1.7); refresh token in an httpOnly, `SameSite=Lax` cookie with path `/api/auth` (`Secure` in production), read via `cookie-parser`
+- Check order:
+    1. Unknown username → 401 `INVALID_CREDENTIALS` (a dummy bcrypt compare keeps the timing the same)
+    2. `locked_until` in the future → 423 `ACCOUNT_LOCKED`, even with the right password
+    3. Wrong password → 401 `INVALID_CREDENTIALS`; the counter is incremented atomically in SQL; the 5th failure sets `locked_until` to now + 15 minutes and resets the counter to 0
+    4. Right password, status `pending` / `rejected` → 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED` (the status is revealed only to someone who knows the password)
+    5. Success → counter reset, `locked_until` cleared, session created, tokens issued
+- Lockout limits (5 attempts, 15 minutes) as constants in `constants/index.ts`
+- These errors carry a machine-readable `code` next to `message` (e.g. `code: "ACCOUNT_PENDING"`) so the FE can show the right message; the codes live in `@school-journal/shared`
+- Active sessions cap: `MAX_ACTIVE_SESSIONS_PER_USER = 10` in `constants/index.ts`; a login over the cap revokes the oldest active sessions in the same transaction that creates the new one (login never fails because of the cap)
+- Login throttling: `authThrottler.LOGIN_LIMIT` / `LOGIN_TTL`, 20 requests / 15 minutes per IP → 429 `TOO_MANY_REQUESTS`
+- Not here: refresh (BE-1.5), logout (BE-1.6), guards, decorators and `/auth/me` (BE-1.7), cleanup of expired / revoked sessions (BE-1.5)
 
 **Acceptance criteria**
 
-- [ ] Approved user gets tokens and a session row is created
-- [ ] Wrong password → 401; locked account → 423/403
+- [ ] Approved user gets an access token in the body and a refresh token in an httpOnly cookie; a session row is created
+- [ ] Wrong password or unknown username → 401 `INVALID_CREDENTIALS`
+- [ ] After 5 wrong passwords → 423 `ACCOUNT_LOCKED` for 15 minutes, also with the right password; a successful login resets the counter
+- [ ] `pending` / `rejected` user with the right password → 403 `ACCOUNT_PENDING` / `ACCOUNT_REJECTED`
+- [ ] A user's 11th login revokes their oldest active session
+- [ ] The 21st login request from one IP within 15 minutes → 429
 
 ---
 
@@ -338,10 +352,12 @@ Users register with a role and sign in once approved; routes are protected by au
 **Rules**
 
 - Refresh token rotation (tokenId in session); reused old token revokes the session
+- Daily cleanup job (`@nestjs/schedule`): deletes sessions that expired or were revoked more than `SESSION_RETENTION_DAYS` ago (constant in `constants/index.ts`; the period is agreed at the ticket start)
 
 **Acceptance criteria**
 
 - [ ] Valid refresh returns a new pair; the old refresh token stops working
+- [ ] The cleanup job deletes expired / revoked sessions past the retention period and keeps the rest
 
 ---
 
@@ -407,12 +423,12 @@ Admin reviews registrations, fixes mistakes and approves or rejects them; admin 
 
 ## Tickets
 
-| ID     | Title            | Depends on |
-| ------ | ---------------- | ---------- |
-| BE-2.1 | List users       | BE-1.7     |
-| BE-2.2 | User details     | BE-1.7     |
-| BE-2.3 | Edit user data   | BE-2.2     |
-| BE-2.4 | Approve / reject | BE-2.2     |
+| ID     | Title            | Depends on     |
+| ------ | ---------------- | -------------- |
+| BE-2.1 | List users       | BE-1.7         |
+| BE-2.2 | User details     | BE-1.7         |
+| BE-2.3 | Edit user data   | BE-2.2         |
+| BE-2.4 | Approve / reject | BE-2.2, BE-1.5 |
 
 ---
 
@@ -462,6 +478,8 @@ Admin reviews registrations, fixes mistakes and approves or rejects them; admin 
 
 ## [BE-2.4] Approve / reject
 
+**Block:** BE-2 · **Depends on:** BE-2.2, BE-1.5
+
 **API**
 
 - `POST /admin/users/:id/approve`
@@ -471,10 +489,12 @@ Admin reviews registrations, fixes mistakes and approves or rejects them; admin 
 
 - Only `pending` users can be approved/rejected; otherwise 409
 - Rejecting revokes existing sessions (if any)
+- The daily cleanup job (BE-1.5) also deletes rejected users whose `rejected_at` is more than `REJECTED_USER_RETENTION_DAYS` (30) days ago (constant in `constants/index.ts`); their sessions and class row go with them via the cascades
 
 **Acceptance criteria**
 
 - [ ] Approved user can log in right away; rejected user can't
+- [ ] The cleanup job deletes users rejected more than 30 days ago and keeps the ones rejected more recently
 
 ---
 
