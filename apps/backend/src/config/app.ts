@@ -1,4 +1,5 @@
 import { INestApplication } from "@nestjs/common";
+import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import { Logger } from "nestjs-pino";
 
@@ -10,6 +11,8 @@ import { setupSwagger } from "./swagger.js";
 export const configureApp = (app: INestApplication, { docs = !isProduction } = {}) => {
     app.useLogger(app.get(Logger));
     app.use(helmet());
+    // the refresh token travels in an httpOnly cookie
+    app.use(cookieParser());
     app.setGlobalPrefix(API_PREFIX);
     app.enableCors({ origin: env.CLIENT_URL, credentials: true });
 

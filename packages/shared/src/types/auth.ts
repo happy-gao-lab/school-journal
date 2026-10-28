@@ -5,3 +5,8 @@ export type RegisterResponse = {
     status: typeof UserStatus.Pending;
     message: string;
 };
+
+// Response of POST /auth/login; the refresh token is set as an httpOnly cookie, not returned here
+export type LoginResponse = {
+    accessToken: string;
+};
