@@ -1,6 +1,7 @@
 import {
     ArgumentsHost,
     BadRequestException,
+    ForbiddenException,
     HttpException,
     HttpStatus,
     InternalServerErrorException,
@@ -9,6 +10,8 @@ import {
 import { DrizzleQueryError } from "drizzle-orm";
 import { PinoLogger } from "nestjs-pino";
 import { describe, expect, it, vi } from "vitest";
+
+import { ErrorCode } from "@school-journal/shared";
 
 import { errors } from "../../constants/errors.js";
 import { HttpExceptionFilter, logMessages } from "../http-exception.filter.js";
@@ -77,6 +80,27 @@ describe("HttpExceptionFilter", () => {
             message: errors.VALIDATION_FAILED,
             errors: fieldErrors,
         });
+    });
+
+    it("passes the machine-readable code of an exception through", () => {
+        const { json } = runFilter(
+            new ForbiddenException({
+                message: errors.ACCOUNT_PENDING,
+                code: ErrorCode.AccountPending,
+            }),
+        );
+
+        expect(json).toHaveBeenCalledWith({
+            statusCode: HttpStatus.FORBIDDEN,
+            message: errors.ACCOUNT_PENDING,
+            code: ErrorCode.AccountPending,
+        });
+    });
+
+    it("sends no code when the exception has none", () => {
+        const { json } = runFilter(new NotFoundException("Nope"));
+
+        expect(json.mock.calls[0]?.[0]).toHaveProperty("code", undefined);
     });
 
     it("falls back to the exception message when the response object has none", () => {

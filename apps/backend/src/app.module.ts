@@ -16,7 +16,8 @@ const loggerModule = {
     pinoHttp: {
         level: logLevel,
         transport: isProduction || logLevel === "silent" ? undefined : { target: "pino-pretty" },
-        redact: ["req.headers.authorization", "req.headers.cookie"],
+        // the refresh token travels in the Cookie / Set-Cookie headers
+        redact: ["req.headers.authorization", "req.headers.cookie", 'res.headers["set-cookie"]'],
         autoLogging: {
             ignore: (req: { url?: string }) => req.url?.split("?")[0] === `/${API_PREFIX}/health`,
         },

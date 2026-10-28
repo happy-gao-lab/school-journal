@@ -29,19 +29,23 @@ const usernameSchema = z
     .regex(USERNAME_PATTERN, "Only Latin letters, digits, dot, underscore and hyphen")
     .regex(USERNAME_ALPHANUMERIC_PATTERN, "Must contain a letter or digit");
 
-// Not trimmed: spaces are a valid part of a password
-const passwordSchema = z
-    .string()
-    .min(PASSWORD_MIN_LENGTH)
-    .max(PASSWORD_MAX_LENGTH)
-    .regex(PASSWORD_UPPERCASE_PATTERN, "Must contain an uppercase letter")
-    .regex(PASSWORD_LOWERCASE_PATTERN, "Must contain a lowercase letter")
-    .regex(PASSWORD_DIGIT_PATTERN, "Must contain a digit")
-    // bcrypt counts bytes: non-Latin letters and emoji take 2–4 each
-    .refine(
+// bcrypt counts bytes: non-Latin letters and emoji take 2–4 each
+const withinPasswordBytes = <TSchema extends z.ZodString>(schema: TSchema) =>
+    schema.refine(
         (password) => new TextEncoder().encode(password).length <= PASSWORD_MAX_LENGTH,
         `Too long: at most ${PASSWORD_MAX_LENGTH} bytes`,
     );
+
+// Not trimmed: spaces are a valid part of a password
+const passwordSchema = withinPasswordBytes(
+    z
+        .string()
+        .min(PASSWORD_MIN_LENGTH)
+        .max(PASSWORD_MAX_LENGTH)
+        .regex(PASSWORD_UPPERCASE_PATTERN, "Must contain an uppercase letter")
+        .regex(PASSWORD_LOWERCASE_PATTERN, "Must contain a lowercase letter")
+        .regex(PASSWORD_DIGIT_PATTERN, "Must contain a digit"),
+);
 
 const emailSchema = z.string().trim().toLowerCase().pipe(z.email().max(EMAIL_MAX_LENGTH));
 
@@ -113,3 +117,11 @@ export const registerSchema = z.discriminatedUnion("role", [
 ]);
 
 export type RegisterInput = z.infer<typeof registerSchema>;
+
+// POST /auth/login; registration rules aren't re-checked, so a rule change never locks anyone out
+export const loginSchema = z.object({
+    username: z.string().trim().min(1).max(USERNAME_MAX_LENGTH),
+    password: withinPasswordBytes(z.string().min(1)),
+});
+
+export type LoginInput = z.infer<typeof loginSchema>;

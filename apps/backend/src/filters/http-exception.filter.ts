@@ -3,6 +3,8 @@ import { DrizzleQueryError } from "drizzle-orm";
 import { Response } from "express";
 import { InjectPinoLogger, PinoLogger } from "nestjs-pino";
 
+import type { ErrorCode } from "@school-journal/shared";
+
 import { FieldErrors } from "../common/pipes/zod-validation.pipe.js";
 import { errors } from "../constants/errors.js";
 import { loggableDbErrorOf, pgErrorOf } from "../utils/db.js";
@@ -78,6 +80,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
         return (response as { errors?: FieldErrors }).errors;
     }
 
+    // Machine-readable code (ErrorCode from shared) for errors the FE handles specially
+    private extractCode(exception: HttpException): ErrorCode | undefined {
+        const response = exception.getResponse();
+
+        if (typeof response === "string") {
+            return undefined;
+        }
+
+        return (response as { code?: ErrorCode }).code;
+    }
+
     catch(exception: unknown, host: ArgumentsHost): void {
         const response = host.switchToHttp().getResponse<Response>();
 
@@ -93,6 +106,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
             response.status(statusCode).json({
                 statusCode,
                 message: this.extractMessage(exception),
+                code: this.extractCode(exception),
                 errors: this.extractFieldErrors(exception),
             });
 
