@@ -374,13 +374,21 @@ Users register with a role and sign in once approved; routes are protected by au
 
 **Block:** BE-1 · **Depends on:** BE-1.4
 
-**API**
+**Goal:** A signed-in user ends their session on this device; its refresh token stops working.
 
-- `POST /auth/logout` (auth required)
+**Scope**
+
+- `POST /auth/logout` in the `auth/` module; the session is found only through the `refresh_token` cookie (no body, no access token), so logout works after the access token has expired and needs no `AuthGuard`; every `refresh_token` value in the Cookie header counts, without repeats (cookie-parser keeps only the first)
+- The token is verified with `TokenService.verifyRefreshToken`; a valid signature → `SessionService.revoke(sessionId)`, also when its `jti` is an old one (same as the reuse rule in BE-1.5); an expired token's session is already inactive, so there is nothing to revoke
+- Response: always 204 No Content and the cookie cleared with the login / refresh attributes, also with no cookie, an invalid token, an already revoked session, a broken request body (logout's body is never parsed) or a database error on revoke (the error is logged; the session then stays active until it expires); logout is idempotent and never fails for the client; the reason is logged on the server only, the token itself never is
+- Not throttled (`@SkipThrottle()`), so a 429 never keeps the cookie
+- Not here: checking in `AuthGuard` that the session is still active (BE-1.7; until then an access token stays valid for up to 15 minutes after logout), logout from all devices, FE (FE-1.5)
 
 **Acceptance criteria**
 
-- [ ] Session is revoked; its refresh token no longer works
+- [ ] Logout with a valid refresh cookie → 204, session revoked, cookie cleared; that refresh token then gets 401 `SESSION_EXPIRED` on `/auth/refresh`
+- [ ] Logout with no cookie, an invalid token or an already revoked session → 204, cookie cleared
+- [ ] Several refresh cookies in one request → the session behind each valid one is revoked; a broken JSON body or more requests than the global limit → still 204, cookie cleared
 
 ---
 
@@ -393,6 +401,7 @@ Users register with a role and sign in once approved; routes are protected by au
 **Scope**
 
 - `AuthGuard` puts `{ id, role, sessionId }` on the request
+- `AuthGuard` also rejects an access token whose session is revoked or expired
 - `RolesGuard` + `@Roles(...)`, `@CurrentUser()` in `common/`
 - `GET /auth/me` — profile + role (+ classId for students)
 

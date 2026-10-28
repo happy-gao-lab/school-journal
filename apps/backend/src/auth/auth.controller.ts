@@ -9,13 +9,14 @@ import {
 } from "@nestjs/common";
 import {
     ApiForbiddenResponse,
+    ApiNoContentResponse,
     ApiOkResponse,
     ApiResponse,
     ApiTags,
     ApiTooManyRequestsResponse,
     ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
-import { Throttle } from "@nestjs/throttler";
+import { SkipThrottle, Throttle } from "@nestjs/throttler";
 import type { CookieOptions, Request, Response } from "express";
 
 import { ErrorCode, loginSchema, registerSchema } from "@school-journal/shared";
@@ -44,6 +45,35 @@ const setRefreshCookie = (response: Response, token: string, expiresAt: string) 
         expires: new Date(expiresAt),
     });
 };
+
+const clearRefreshCookie = (response: Response) => {
+    response.clearCookie(REFRESH_TOKEN_COOKIE, refreshCookieOptions);
+};
+
+const refreshCookieOf = (request: Request) => {
+    const cookie: unknown = request.cookies?.[REFRESH_TOKEN_COOKIE];
+
+    return typeof cookie === "string" ? cookie : undefined;
+};
+
+// The value of one `name=value` pair of the Cookie header if it is a non-empty refresh token
+const refreshTokenOfPair = (pair: string) => {
+    const separator = pair.indexOf("=");
+
+    if (separator === -1 || pair.slice(0, separator).trim() !== REFRESH_TOKEN_COOKIE) {
+        return [];
+    }
+
+    const value = pair.slice(separator + 1).trim();
+
+    return value ? [value] : [];
+};
+
+// Every refresh token in the Cookie header, without repeats; cookie-parser keeps only the first
+// one when the browser sends several cookies of the same name
+const refreshCookiesOf = (request: Request) => [
+    ...new Set((request.headers.cookie ?? "").split(";").flatMap(refreshTokenOfPair)),
+];
 
 @ApiTags("auth")
 @Controller("auth")
@@ -97,11 +127,9 @@ export class AuthController {
         @Req() request: Request,
         @Res({ passthrough: true }) response: Response,
     ): Promise<LoginResponse> {
-        const cookie: unknown = request.cookies?.[REFRESH_TOKEN_COOKIE];
-
         try {
             const { accessToken, refreshToken, refreshExpiresAt } = await this.authService.refresh(
-                typeof cookie === "string" ? cookie : undefined,
+                refreshCookieOf(request),
             );
 
             setRefreshCookie(response, refreshToken, refreshExpiresAt);
@@ -110,10 +138,28 @@ export class AuthController {
         } catch (error) {
             // other errors (e.g. the database is down) leave the cookie for a retry
             if (error instanceof UnauthorizedException) {
-                response.clearCookie(REFRESH_TOKEN_COOKIE, refreshCookieOptions);
+                clearRefreshCookie(response);
             }
 
             throw error;
         }
+    }
+
+    // Found by the refresh cookie, not the access token, so it works after the access token expired;
+    // a missing or dead token, or a failed revoke, is still a success: the user is always signed out.
+    // Not throttled, so a 429 never keeps the cookie; its body is never parsed (see configureApp)
+    @SkipThrottle()
+    @ApiNoContentResponse({
+        description: `The session is ended and the "${REFRESH_TOKEN_COOKIE}" cookie is cleared`,
+    })
+    @HttpCode(HttpStatus.NO_CONTENT)
+    @Post("logout")
+    async logout(
+        @Req() request: Request,
+        @Res({ passthrough: true }) response: Response,
+    ): Promise<void> {
+        await this.authService.logout(refreshCookiesOf(request));
+
+        clearRefreshCookie(response);
     }
 }
