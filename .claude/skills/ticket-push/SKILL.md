@@ -100,5 +100,22 @@ Don't change the Jira status here. The ticket stays in its current stage until i
 ## 7. Report and stop
 
 - The commits (hash + subject), the pushed branch, and the PR link.
-- Remind the user to review the PR on GitHub before merging.
+- Remind the user to review the PR on GitHub before merging, and to say "merged" once it is merged.
 - **Never merge.** Merging is a separate step, done only on the user's explicit OK.
+
+## 8. After the user says "merged"
+
+The word "merged" (about this PR, or an epic PR into `dev`) is the yes for these steps. Do them all, in this order, then report.
+
+1. **Check the PR really is merged:** `gh pr view <number> --repo happy-gao-lab/school-journal --json state,mergedAt,baseRefName,headRefName`. If `state` isn't `MERGED`, stop and say so. Then `git fetch origin --prune`.
+2. **Statuses** (they follow the workflow, so no asking): a ticket PR merged into its epic → the ticket goes to `Done`; an epic PR merged into `dev` → the epic goes to `Done`. Read the epic's status as well: it must be `In Progress` while it has open tickets. Report each status before → after, or "already right".
+3. **Delete the merged branch** (a ticket branch after its merge into the epic, an epic branch after its merge into `dev`):
+    - Check it's merged: `git merge-base --is-ancestor origin/<branch> origin/<base>` (skip if the remote branch is already gone).
+    - If this worktree has it checked out, the working tree must be clean (otherwise stop and ask); then `git switch --detach origin/<base>`.
+    - On origin: `git push origin --delete <branch>`, unless GitHub already deleted it.
+    - Locally: `git branch -d <branch>` (never `-D`; if `-d` refuses, stop and report).
+4. **Update locally:** fast-forward the local base branch (the epic, or `dev`) to `origin/<base>`:
+    - Checked out in a worktree (`git worktree list`) → `git -C <that-path> merge --ff-only origin/<base>`, only if that worktree is clean.
+    - Not checked out anywhere → `git branch -f <base> origin/<base>`, only if `git merge-base --is-ancestor <base> origin/<base>` passes.
+    - If it can't fast-forward, stop and report; never rebase, reset or force.
+5. **Report:** the merge commit, the status changes, the deleted branches (origin + local), the updated local branch with its new head, and where this worktree's HEAD is now.

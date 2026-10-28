@@ -171,6 +171,7 @@ Users register, sign in, stay signed in and only reach pages for their role.
 
 - Request interceptor adds `Authorization: Bearer`
 - On 401: single in-flight refresh, queue other requests, retry; on refresh failure → sign out and redirect to login
+- The refresh is also shared across browser tabs (e.g. Web Locks API): the backend has no grace window (BE-1.5), so a second parallel refresh with the same token counts as reuse and signs the user out
 
 **Acceptance criteria**
 
