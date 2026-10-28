@@ -927,7 +927,7 @@ describe("AuthService.refresh", () => {
 describe("AuthService.logout", () => {
     const allSessions = () => db.select().from(sessionsTable).orderBy(sessionsTable.id);
 
-    const logout = (token: string | undefined) => createService().logout(token);
+    const logout = (...tokens: string[]) => createService().logout(tokens);
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -979,16 +979,17 @@ describe("AuthService.logout", () => {
         expect((await sessionOf(tokens.refreshToken)).revokedAt).toBe(revokedAt);
     });
 
-    const deadTokens: [string, (sessionId: number) => Promise<string | undefined>][] = [
-        ["a missing token", () => Promise.resolve(undefined)],
-        ["a garbage string", () => Promise.resolve("not.a.jwt")],
+    const deadTokens: [string, (sessionId: number) => Promise<string[]>][] = [
+        ["no token", () => Promise.resolve([])],
+        ["a garbage string", () => Promise.resolve(["not.a.jwt"])],
         [
             "a token signed with the access secret",
-            (sessionId) =>
-                jwtService.signAsync(
+            async (sessionId) => [
+                await jwtService.signAsync(
                     { sub: "1", sessionId, jti: randomUUID() },
                     { secret: env.JWT_ACCESS_SECRET },
                 ),
+            ],
         ],
     ];
 
@@ -997,7 +998,7 @@ describe("AuthService.logout", () => {
         const before = await allSessions();
 
         await expect(
-            logout(await makeToken((await sessionOf(tokens.refreshToken)).id)),
+            logout(...(await makeToken((await sessionOf(tokens.refreshToken)).id))),
         ).resolves.toBeUndefined();
 
         expect(await allSessions()).toEqual(before);
@@ -1026,6 +1027,28 @@ describe("AuthService.logout", () => {
             { err: error, sessionId: id },
             logoutLogMessages.REVOKE_FAILED,
         );
+    });
+
+    it("revokes the session behind every token in the request and skips the dead ones", async () => {
+        const { tokens } = await signIn();
+        const other = await signInAgain();
+
+        await logout(tokens.refreshToken, "not.a.jwt", other.refreshToken);
+
+        expect((await sessionOf(tokens.refreshToken)).revokedAt).not.toBeNull();
+        expect((await sessionOf(other.refreshToken)).revokedAt).not.toBeNull();
+        expect(logger.info).toHaveBeenCalledWith(logoutLogMessages.INVALID_TOKEN);
+    });
+
+    it("revokes a session once when two of its tokens come in one request", async () => {
+        const { tokens } = await signIn();
+        const rotated = await refresh(tokens.refreshToken);
+        const revoke = vi.spyOn(SessionService.prototype, "revoke");
+
+        await logout(tokens.refreshToken, rotated.refreshToken);
+
+        expect(revoke).toHaveBeenCalledTimes(1);
+        expect((await sessionOf(rotated.refreshToken)).revokedAt).not.toBeNull();
     });
 
     it("never logs the token", async () => {

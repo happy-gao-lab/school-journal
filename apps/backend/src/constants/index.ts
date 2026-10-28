@@ -48,5 +48,6 @@ export const SESSION_RETENTION_DAYS = 7;
 // Only sent to the auth routes, where refresh and logout read it
 export const REFRESH_TOKEN_COOKIE = "refresh_token";
 export const REFRESH_TOKEN_COOKIE_PATH = `/${API_PREFIX}/auth`;
+export const LOGOUT_PATH = `${REFRESH_TOKEN_COOKIE_PATH}/logout`;
 
 export const BCRYPT_SALT_ROUNDS = 12;

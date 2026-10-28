@@ -334,30 +334,14 @@ export class AuthService {
         return this.issueTokens(session.userId, session.role, session);
     }
 
-    // Ends the session the refresh token belongs to; never fails for the client, since there is
-    // nothing to end without a valid token. An old token of the session ends it too, as on refresh
-    async logout(token: string | undefined) {
-        if (!token) {
-            this.logger.debug(logoutLogMessages.NO_TOKEN);
-
-            return;
-        }
-
-        const payload = await this.tokenService.verifyRefreshToken(token);
-
-        if (!payload) {
-            this.logger.info(logoutLogMessages.INVALID_TOKEN);
-
-            return;
-        }
-
-        const { sessionId } = payload;
+    // Revoking is the only database call in logout; a failure still signs the user out, and the
+    // session then stays active on the server until it expires
+    private async revokeOnLogout(sessionId: number) {
         let revoked: boolean;
 
         try {
             revoked = await this.sessionService.revoke(sessionId);
         } catch (error) {
-            // the user is signed out anyway; the session stays active on the server until it expires
             this.logger.error({ err: error, sessionId }, logoutLogMessages.REVOKE_FAILED);
 
             return;
@@ -367,5 +351,31 @@ export class AuthService {
             { sessionId },
             revoked ? logoutLogMessages.SESSION_REVOKED : logoutLogMessages.SESSION_INACTIVE,
         );
+    }
+
+    // Ends the sessions the refresh tokens belong to; never fails for the client, since a dead
+    // token has nothing to end. A browser can send several cookies of the same name (e.g. from
+    // another path), so every token counts. An old token of a session ends it too, as on refresh
+    async logout(tokens: string[]) {
+        if (tokens.length === 0) {
+            this.logger.debug(logoutLogMessages.NO_TOKEN);
+
+            return;
+        }
+
+        const payloads = await Promise.all(
+            tokens.map((token) => this.tokenService.verifyRefreshToken(token)),
+        );
+        const sessionIds = new Set<number>();
+
+        for (const payload of payloads) {
+            if (payload) {
+                sessionIds.add(payload.sessionId);
+            } else {
+                this.logger.info(logoutLogMessages.INVALID_TOKEN);
+            }
+        }
+
+        await Promise.all([...sessionIds].map((sessionId) => this.revokeOnLogout(sessionId)));
     }
 }

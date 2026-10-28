@@ -17,6 +17,7 @@ import { configureApp } from "../src/config/app.js";
 import { errors } from "../src/constants/errors.js";
 import {
     authThrottler,
+    globalThrottler,
     REFRESH_TOKEN_COOKIE,
     REFRESH_TOKEN_COOKIE_PATH,
 } from "../src/constants/index.js";
@@ -221,7 +222,7 @@ describe("auth (e2e)", () => {
 
         const response = await postLogout().set("Cookie", `${REFRESH_TOKEN_COOKIE}=old.jwt`);
 
-        expect(logout).toHaveBeenCalledWith("old.jwt");
+        expect(logout).toHaveBeenCalledWith(["old.jwt"]);
         expect(response.status).toBe(HttpStatus.NO_CONTENT);
         expect(response.text).toBe("");
         expect(response.headers["set-cookie"]).toEqual([
@@ -234,7 +235,47 @@ describe("auth (e2e)", () => {
 
         const response = await postLogout().send({ refreshToken: "old.jwt" });
 
-        expect(logout).toHaveBeenCalledWith(undefined);
+        expect(logout).toHaveBeenCalledWith([]);
+        expect(response.status).toBe(HttpStatus.NO_CONTENT);
+        expect(response.headers["set-cookie"]).toEqual([
+            `${REFRESH_TOKEN_COOKIE}=; Path=${REFRESH_TOKEN_COOKIE_PATH}; Expires=${new Date(0).toUTCString()}; HttpOnly; SameSite=Lax`,
+        ]);
+    });
+
+    it("POST /api/auth/logout passes every refresh token cookie in the request, without repeats or empty values", async () => {
+        const { logout, postLogout } = await createApp();
+
+        await postLogout().set(
+            "Cookie",
+            `${REFRESH_TOKEN_COOKIE}=dead.jwt; other=x; ${REFRESH_TOKEN_COOKIE}=; ${REFRESH_TOKEN_COOKIE}=live.jwt; ${REFRESH_TOKEN_COOKIE}=dead.jwt`,
+        );
+
+        expect(logout).toHaveBeenCalledWith(["dead.jwt", "live.jwt"]);
+    });
+
+    it("POST /api/auth/logout ignores a broken JSON body and still answers 204", async () => {
+        const { logout, postLogout } = await createApp();
+
+        const response = await postLogout()
+            .set("Cookie", `${REFRESH_TOKEN_COOKIE}=old.jwt`)
+            .set("Content-Type", "application/json")
+            .send("{");
+
+        expect(logout).toHaveBeenCalledWith(["old.jwt"]);
+        expect(response.status).toBe(HttpStatus.NO_CONTENT);
+        expect(response.headers["set-cookie"]).toEqual([
+            `${REFRESH_TOKEN_COOKIE}=; Path=${REFRESH_TOKEN_COOKIE_PATH}; Expires=${new Date(0).toUTCString()}; HttpOnly; SameSite=Lax`,
+        ]);
+    });
+
+    it("POST /api/auth/logout is not throttled, so it still clears the cookie past the global limit", async () => {
+        const { postLogout } = await createApp();
+
+        for (let sent = 0; sent < globalThrottler.LIMIT; sent++) {
+            await postLogout();
+        }
+        const response = await postLogout();
+
         expect(response.status).toBe(HttpStatus.NO_CONTENT);
         expect(response.headers["set-cookie"]).toEqual([
             `${REFRESH_TOKEN_COOKIE}=; Path=${REFRESH_TOKEN_COOKIE_PATH}; Expires=${new Date(0).toUTCString()}; HttpOnly; SameSite=Lax`,

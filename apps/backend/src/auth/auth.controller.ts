@@ -16,7 +16,7 @@ import {
     ApiTooManyRequestsResponse,
     ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
-import { Throttle } from "@nestjs/throttler";
+import { SkipThrottle, Throttle } from "@nestjs/throttler";
 import type { CookieOptions, Request, Response } from "express";
 
 import { ErrorCode, loginSchema, registerSchema } from "@school-journal/shared";
@@ -55,6 +55,25 @@ const refreshCookieOf = (request: Request) => {
 
     return typeof cookie === "string" ? cookie : undefined;
 };
+
+// The value of one `name=value` pair of the Cookie header if it is a non-empty refresh token
+const refreshTokenOfPair = (pair: string) => {
+    const separator = pair.indexOf("=");
+
+    if (separator === -1 || pair.slice(0, separator).trim() !== REFRESH_TOKEN_COOKIE) {
+        return [];
+    }
+
+    const value = pair.slice(separator + 1).trim();
+
+    return value ? [value] : [];
+};
+
+// Every refresh token in the Cookie header, without repeats; cookie-parser keeps only the first
+// one when the browser sends several cookies of the same name
+const refreshCookiesOf = (request: Request) => [
+    ...new Set((request.headers.cookie ?? "").split(";").flatMap(refreshTokenOfPair)),
+];
 
 @ApiTags("auth")
 @Controller("auth")
@@ -127,18 +146,19 @@ export class AuthController {
     }
 
     // Found by the refresh cookie, not the access token, so it works after the access token expired;
-    // a missing or dead token, or a failed revoke, is still a success: the user is always signed out
+    // a missing or dead token, or a failed revoke, is still a success: the user is always signed out.
+    // Not throttled, so a 429 never keeps the cookie; its body is never parsed (see configureApp)
+    @SkipThrottle()
     @ApiNoContentResponse({
         description: `The session is ended and the "${REFRESH_TOKEN_COOKIE}" cookie is cleared`,
     })
-    @ApiTooManyRequestsResponse({ description: "Too many requests from this IP" })
     @HttpCode(HttpStatus.NO_CONTENT)
     @Post("logout")
     async logout(
         @Req() request: Request,
         @Res({ passthrough: true }) response: Response,
     ): Promise<void> {
-        await this.authService.logout(refreshCookieOf(request));
+        await this.authService.logout(refreshCookiesOf(request));
 
         clearRefreshCookie(response);
     }
