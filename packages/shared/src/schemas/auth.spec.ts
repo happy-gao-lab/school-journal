@@ -11,7 +11,7 @@ import {
     USERNAME_MIN_LENGTH,
 } from "../constants/users.js";
 import { Role } from "../enums/role.js";
-import { registerSchema } from "./auth.js";
+import { loginSchema, registerSchema } from "./auth.js";
 
 const common = {
     username: "ivan.p",
@@ -364,5 +364,78 @@ describe("registerSchema", () => {
             expect(parse({ ...teacher, email: atLimit }).success).toBe(true);
             expect(fieldsOf({ ...teacher, email: overLimit })).toEqual(["email"]);
         });
+    });
+});
+
+describe("loginSchema", () => {
+    const login = { username: "ivan.p", password: "Secret12" };
+
+    const loginDataOf = (input: object) => {
+        const result = loginSchema.safeParse(input);
+
+        if (!result.success) {
+            throw new Error(`Expected valid input, got ${JSON.stringify(result.error.issues)}`);
+        }
+
+        return result.data;
+    };
+
+    // Each failed field once, even when it broke several rules
+    const loginFieldsOf = (input: object) => {
+        const result = loginSchema.safeParse(input);
+
+        if (result.success) {
+            throw new Error(`Expected ${JSON.stringify(input)} to fail validation`);
+        }
+
+        return [...new Set(result.error.issues.map((issue) => issue.path.join(".")))];
+    };
+
+    it("trims the username and keeps spaces around the password", () => {
+        expect(loginDataOf({ username: "  ivan.p  ", password: " Secret12 " })).toEqual({
+            username: "ivan.p",
+            password: " Secret12 ",
+        });
+    });
+
+    it("doesn't apply the registration rules, so a rule change never locks anyone out", () => {
+        expect(loginDataOf({ username: "ab", password: "x" })).toEqual({
+            username: "ab",
+            password: "x",
+        });
+    });
+
+    it("rejects a missing, empty or blank username and a missing or empty password", () => {
+        expect(loginFieldsOf({})).toEqual(["username", "password"]);
+        expect(loginFieldsOf({ username: "", password: "" })).toEqual(["username", "password"]);
+        expect(loginFieldsOf({ ...login, username: "   " })).toEqual(["username"]);
+        expect(loginFieldsOf({ ...login, password: 12_345_678 })).toEqual(["password"]);
+    });
+
+    it("rejects a username longer than any registered one", () => {
+        expect(
+            loginSchema.safeParse({ ...login, username: "a".repeat(USERNAME_MAX_LENGTH) }).success,
+        ).toBe(true);
+        expect(loginFieldsOf({ ...login, username: "a".repeat(USERNAME_MAX_LENGTH + 1) })).toEqual([
+            "username",
+        ]);
+    });
+
+    it("limits the password to the bytes bcrypt reads", () => {
+        // a Ukrainian letter takes 2 bytes: 36 * 2 = 72 bytes
+        const atLimit = "\u0457".repeat(PASSWORD_MAX_LENGTH / 2);
+
+        expect(
+            loginSchema.safeParse({ ...login, password: "x".repeat(PASSWORD_MAX_LENGTH) }).success,
+        ).toBe(true);
+        expect(loginSchema.safeParse({ ...login, password: atLimit }).success).toBe(true);
+        expect(loginFieldsOf({ ...login, password: "x".repeat(PASSWORD_MAX_LENGTH + 1) })).toEqual([
+            "password",
+        ]);
+        expect(loginFieldsOf({ ...login, password: `${atLimit}x` })).toEqual(["password"]);
+    });
+
+    it("strips unknown fields", () => {
+        expect(loginDataOf({ ...login, role: Role.Admin })).toEqual(login);
     });
 });

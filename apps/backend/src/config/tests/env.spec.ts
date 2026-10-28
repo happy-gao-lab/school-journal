@@ -3,16 +3,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // A local .env must not leak into the tests
 vi.mock("dotenv/config", () => ({}));
 
-const ENV_KEYS = ["NODE_ENV", "PORT", "CLIENT_URL", "DATABASE_URL", "LOG_LEVEL"] as const;
+const ENV_KEYS = [
+    "NODE_ENV",
+    "PORT",
+    "CLIENT_URL",
+    "DATABASE_URL",
+    "JWT_ACCESS_SECRET",
+    "JWT_REFRESH_SECRET",
+    "LOG_LEVEL",
+] as const;
 
 const DATABASE_URL = "postgresql://user:password@db.test/journal";
+const JWT_ACCESS_SECRET = "test-access-secret-at-least-32-chars";
+const JWT_REFRESH_SECRET = "test-refresh-secret-at-least-32-chars";
 
 type EnvInput = Partial<Record<(typeof ENV_KEYS)[number], string>>;
 
 // env.ts validates on import, so each call loads a fresh copy of the module;
-// DATABASE_URL is required, so it gets a valid value unless the test sets it
+// DATABASE_URL and the JWT secrets are required, so they get valid values unless the test sets them
 const loadEnv = async (values: EnvInput) => {
-    const input: EnvInput = { DATABASE_URL, ...values };
+    const input: EnvInput = { DATABASE_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, ...values };
 
     for (const key of ENV_KEYS) {
         vi.stubEnv(key, input[key]);
@@ -40,6 +50,8 @@ describe("env", () => {
             PORT: 4000,
             CLIENT_URL: "http://localhost:3000",
             DATABASE_URL,
+            JWT_ACCESS_SECRET,
+            JWT_REFRESH_SECRET,
         });
     });
 
@@ -87,6 +99,27 @@ describe("env", () => {
             expect(env.DATABASE_URL).toBe(databaseUrl);
         },
     );
+
+    it.each(["JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET"] as const)(
+        "rejects a missing or too short %s and accepts 32 characters",
+        async (key) => {
+            const atMin = (key === "JWT_ACCESS_SECRET" ? "a" : "r").repeat(32);
+
+            await expect(loadEnv({ [key]: undefined })).rejects.toThrow(new RegExp(key));
+            await expect(loadEnv({ [key]: atMin.slice(1) })).rejects.toThrow(new RegExp(key));
+
+            const { env } = await loadEnv({ [key]: atMin });
+            expect(env[key]).toBe(atMin);
+        },
+    );
+
+    it("rejects the same secret for access and refresh tokens", async () => {
+        const secret = "s".repeat(32);
+
+        await expect(
+            loadEnv({ JWT_ACCESS_SECRET: secret, JWT_REFRESH_SECRET: secret }),
+        ).rejects.toThrow(/JWT_REFRESH_SECRET/);
+    });
 
     it("rejects an unknown NODE_ENV", async () => {
         await expect(loadEnv({ NODE_ENV: "staging" })).rejects.toThrow(/NODE_ENV/);
