@@ -59,9 +59,10 @@ const createApp = async () => {
     const register = vi.fn().mockResolvedValue(registered);
     const login = vi.fn().mockResolvedValue(signedIn);
     const refresh = vi.fn().mockResolvedValue(signedIn);
+    const logout = vi.fn().mockResolvedValue(undefined);
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(AuthService)
-        .useValue({ register, login, refresh })
+        .useValue({ register, login, refresh, logout })
         .compile();
 
     app = moduleRef.createNestApplication({ bufferLogs: true });
@@ -76,7 +77,9 @@ const createApp = async () => {
 
     const postRefresh = () => request(app?.getHttpServer()).post("/api/auth/refresh");
 
-    return { register, post, login, postLogin, refresh, postRefresh };
+    const postLogout = () => request(app?.getHttpServer()).post("/api/auth/logout");
+
+    return { register, post, login, postLogin, refresh, postRefresh, logout, postLogout };
 };
 
 describe("auth (e2e)", () => {
@@ -211,5 +214,30 @@ describe("auth (e2e)", () => {
 
         expect(response.status).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
         expect(response.headers["set-cookie"]).toBeUndefined();
+    });
+
+    it("POST /api/auth/logout passes the cookie to the service, answers 204 with an empty body and clears the cookie on the same path", async () => {
+        const { logout, postLogout } = await createApp();
+
+        const response = await postLogout().set("Cookie", `${REFRESH_TOKEN_COOKIE}=old.jwt`);
+
+        expect(logout).toHaveBeenCalledWith("old.jwt");
+        expect(response.status).toBe(HttpStatus.NO_CONTENT);
+        expect(response.text).toBe("");
+        expect(response.headers["set-cookie"]).toEqual([
+            `${REFRESH_TOKEN_COOKIE}=; Path=${REFRESH_TOKEN_COOKIE_PATH}; Expires=${new Date(0).toUTCString()}; HttpOnly; SameSite=Lax`,
+        ]);
+    });
+
+    it("POST /api/auth/logout ignores a token sent in the body and still clears the cookie", async () => {
+        const { logout, postLogout } = await createApp();
+
+        const response = await postLogout().send({ refreshToken: "old.jwt" });
+
+        expect(logout).toHaveBeenCalledWith(undefined);
+        expect(response.status).toBe(HttpStatus.NO_CONTENT);
+        expect(response.headers["set-cookie"]).toEqual([
+            `${REFRESH_TOKEN_COOKIE}=; Path=${REFRESH_TOKEN_COOKIE_PATH}; Expires=${new Date(0).toUTCString()}; HttpOnly; SameSite=Lax`,
+        ]);
     });
 });
