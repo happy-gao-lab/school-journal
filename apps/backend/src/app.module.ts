@@ -1,10 +1,12 @@
 import { Module } from "@nestjs/common";
 import { APP_FILTER, APP_GUARD } from "@nestjs/core";
+import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { LoggerModule } from "nestjs-pino";
 
 import { AuthModule } from "./auth/auth.module.js";
 import { ClassesModule } from "./classes/classes.module.js";
+import { CleanupModule } from "./cleanup/cleanup.module.js";
 import { isProduction, logLevel } from "./config/env.js";
 import { errors } from "./constants/errors.js";
 import { API_PREFIX, globalThrottler } from "./constants/index.js";
@@ -33,10 +35,12 @@ const throttlerModule = {
     imports: [
         LoggerModule.forRoot(loggerModule),
         ThrottlerModule.forRoot(throttlerModule),
+        ScheduleModule.forRoot(),
         DbModule,
         HealthModule,
         AuthModule,
         ClassesModule,
+        CleanupModule,
     ],
     providers: [
         { provide: APP_GUARD, useClass: ThrottlerGuard },

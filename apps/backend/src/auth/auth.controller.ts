@@ -1,4 +1,12 @@
-import { Controller, HttpCode, HttpStatus, Post, Res } from "@nestjs/common";
+import {
+    Controller,
+    HttpCode,
+    HttpStatus,
+    Post,
+    Req,
+    Res,
+    UnauthorizedException,
+} from "@nestjs/common";
 import {
     ApiForbiddenResponse,
     ApiOkResponse,
@@ -8,7 +16,7 @@ import {
     ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
-import type { Response } from "express";
+import type { CookieOptions, Request, Response } from "express";
 
 import { ErrorCode, loginSchema, registerSchema } from "@school-journal/shared";
 import type { LoginInput, LoginResponse, RegisterInput } from "@school-journal/shared";
@@ -21,6 +29,21 @@ import {
     REFRESH_TOKEN_COOKIE_PATH,
 } from "../constants/index.js";
 import { AuthService } from "./auth.service.js";
+
+// Same attributes when setting and clearing, or the browser keeps the old cookie
+const refreshCookieOptions: CookieOptions = {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProduction,
+    path: REFRESH_TOKEN_COOKIE_PATH,
+};
+
+const setRefreshCookie = (response: Response, token: string, expiresAt: string) => {
+    response.cookie(REFRESH_TOKEN_COOKIE, token, {
+        ...refreshCookieOptions,
+        expires: new Date(expiresAt),
+    });
+};
 
 @ApiTags("auth")
 @Controller("auth")
@@ -55,14 +78,42 @@ export class AuthController {
     ): Promise<LoginResponse> {
         const { accessToken, refreshToken, refreshExpiresAt } = await this.authService.login(data);
 
-        response.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
-            httpOnly: true,
-            sameSite: "lax",
-            secure: isProduction,
-            path: REFRESH_TOKEN_COOKIE_PATH,
-            expires: new Date(refreshExpiresAt),
-        });
+        setRefreshCookie(response, refreshToken, refreshExpiresAt);
 
         return { accessToken };
+    }
+
+    // Reads only the cookie; a failed refresh clears it, so the browser stops sending a dead token
+    @ApiOkResponse({
+        description: `{ accessToken }; a new refresh token replaces the httpOnly "${REFRESH_TOKEN_COOKIE}" cookie`,
+    })
+    @ApiUnauthorizedResponse({
+        description: `code: ${ErrorCode.SessionExpired}; the cookie is cleared`,
+    })
+    @ApiTooManyRequestsResponse({ description: "Too many requests from this IP" })
+    @HttpCode(HttpStatus.OK)
+    @Post("refresh")
+    async refresh(
+        @Req() request: Request,
+        @Res({ passthrough: true }) response: Response,
+    ): Promise<LoginResponse> {
+        const cookie: unknown = request.cookies?.[REFRESH_TOKEN_COOKIE];
+
+        try {
+            const { accessToken, refreshToken, refreshExpiresAt } = await this.authService.refresh(
+                typeof cookie === "string" ? cookie : undefined,
+            );
+
+            setRefreshCookie(response, refreshToken, refreshExpiresAt);
+
+            return { accessToken };
+        } catch (error) {
+            // other errors (e.g. the database is down) leave the cookie for a retry
+            if (error instanceof UnauthorizedException) {
+                response.clearCookie(REFRESH_TOKEN_COOKIE, refreshCookieOptions);
+            }
+
+            throw error;
+        }
     }
 }

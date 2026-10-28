@@ -35,6 +35,16 @@ export const tokenTtl = {
 // Signing in on one more device signs out the oldest one
 export const MAX_ACTIVE_SESSIONS_PER_USER = 10;
 
+// Daily cleanup job: at night, in the schools' time zone
+export const cleanupJob = {
+    NAME: "cleanup",
+    CRON: "0 3 * * *",
+    TIME_ZONE: "Europe/Kyiv",
+};
+
+// Expired / revoked sessions are kept this long (for debugging), then the cleanup job deletes them
+export const SESSION_RETENTION_DAYS = 7;
+
 // Only sent to the auth routes, where refresh and logout read it
 export const REFRESH_TOKEN_COOKIE = "refresh_token";
 export const REFRESH_TOKEN_COOKIE_PATH = `/${API_PREFIX}/auth`;
