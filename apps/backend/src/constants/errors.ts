@@ -12,4 +12,5 @@ export const errors = {
     ACCOUNT_LOCKED: "Too many failed sign-in attempts. Please, try again later.",
     ACCOUNT_PENDING: messages.REGISTRATION_PENDING,
     ACCOUNT_REJECTED: "Your registration was rejected",
+    SESSION_EXPIRED: "Your session has expired. Please, sign in again.",
 } as const;

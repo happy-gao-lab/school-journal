@@ -11,5 +11,7 @@ import { TokenService } from "./token.service.js";
     imports: [JwtModule.register({})],
     controllers: [AuthController],
     providers: [AuthService, SessionService, TokenService],
+    // the cleanup job deletes stale sessions
+    exports: [SessionService],
 })
 export class AuthModule {}

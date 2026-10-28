@@ -10,6 +10,7 @@ import {
 } from "@nestjs/common";
 import { compare, hash } from "bcrypt";
 import { and, eq, gt, isNotNull, or, sql } from "drizzle-orm";
+import { InjectPinoLogger, PinoLogger } from "nestjs-pino";
 
 import {
     currentSchoolYear,
@@ -72,6 +73,18 @@ const notApproved = {
         }),
 };
 
+// Every failed refresh looks the same to the client; the reason is only logged
+const sessionExpired = () =>
+    new UnauthorizedException({ message: errors.SESSION_EXPIRED, code: ErrorCode.SessionExpired });
+
+export const refreshLogMessages = {
+    NO_TOKEN: "Refresh without a token",
+    INVALID_TOKEN: "Refresh with an invalid or expired token",
+    SESSION_REVOKED:
+        "Refresh with a reused token or by a user who is no longer approved; session revoked",
+    SESSION_INACTIVE: "Refresh of a revoked or expired session",
+};
+
 // Maps a constraint violation from a concurrent request to the error the up-front checks give
 const conflictOf = (error: unknown) => {
     const pgError = pgErrorOf(error);
@@ -105,7 +118,27 @@ export class AuthService {
     constructor(
         private readonly tokenService: TokenService,
         private readonly sessionService: SessionService,
+        @InjectPinoLogger(AuthService.name) private readonly logger: PinoLogger,
     ) {}
+
+    // Login and refresh both end with a new token pair for the session
+    private async issueTokens(
+        userId: number,
+        role: Role,
+        session: { id: number; tokenId: string; expiresAt: string },
+    ) {
+        const sub = String(userId);
+
+        const [accessToken, refreshToken] = await Promise.all([
+            this.tokenService.signAccessToken({ sub, role, sessionId: session.id }),
+            this.tokenService.signRefreshToken(
+                { sub, sessionId: session.id, jti: session.tokenId },
+                session.expiresAt,
+            ),
+        ]);
+
+        return { accessToken, refreshToken, refreshExpiresAt: session.expiresAt };
+    }
 
     // Username wins when both are taken; the schema already lowercased the email
     private async assertAvailable(username: string, email: string | undefined) {
@@ -252,16 +285,44 @@ export class AuthService {
             );
 
         const session = await this.sessionService.create(user.id);
-        const sub = String(user.id);
 
-        const [accessToken, refreshToken] = await Promise.all([
-            this.tokenService.signAccessToken({ sub, role: user.role, sessionId: session.id }),
-            this.tokenService.signRefreshToken(
-                { sub, sessionId: session.id, jti: session.tokenId },
-                session.expiresAt,
-            ),
-        ]);
+        return this.issueTokens(user.id, user.role, session);
+    }
 
-        return { accessToken, refreshToken, refreshExpiresAt: session.expiresAt };
+    // Rotates the session's refresh token; an old token that comes back means it was copied,
+    // so the session is ended for whoever holds it
+    async refresh(token: string | undefined) {
+        if (!token) {
+            // a guest's page load, nothing unusual
+            this.logger.debug(refreshLogMessages.NO_TOKEN);
+
+            throw sessionExpired();
+        }
+
+        const payload = await this.tokenService.verifyRefreshToken(token);
+
+        if (!payload) {
+            // usually a token that expired while the user was away
+            this.logger.info(refreshLogMessages.INVALID_TOKEN);
+
+            throw sessionExpired();
+        }
+
+        const { sessionId } = payload;
+        const session = await this.sessionService.rotate(sessionId, payload.jti);
+
+        if (!session) {
+            // still active here means another token id (reused) or a user who isn't approved
+            const revoked = await this.sessionService.revoke(sessionId);
+
+            this.logger.warn(
+                { sessionId },
+                revoked ? refreshLogMessages.SESSION_REVOKED : refreshLogMessages.SESSION_INACTIVE,
+            );
+
+            throw sessionExpired();
+        }
+
+        return this.issueTokens(session.userId, session.role, session);
     }
 }

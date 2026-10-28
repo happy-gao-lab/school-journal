@@ -345,19 +345,28 @@ Users register with a role and sign in once approved; routes are protected by au
 
 **Block:** BE-1 · **Depends on:** BE-1.4
 
-**API**
+**Goal:** A signed-in user gets a new token pair without signing in again; a refresh token that was already used stops working and ends its session.
 
-- `POST /auth/refresh`
+**Scope**
 
-**Rules**
-
-- Refresh token rotation (tokenId in session); reused old token revokes the session
-- Daily cleanup job (`@nestjs/schedule`): deletes sessions that expired or were revoked more than `SESSION_RETENTION_DAYS` ago (constant in `constants/index.ts`; the period is agreed at the ticket start)
+- `POST /auth/refresh` in the `auth/` module; the refresh token is read only from the `refresh_token` cookie (no body)
+- Response is the same as login: `{ accessToken }` in the body (`LoginResponse` type) and a new refresh token cookie with the login attributes; login and refresh set the cookie through one helper
+- `auth/token.service.ts` verifies the refresh token with `JWT_REFRESH_SECRET`
+- Rotation: one atomic update matches the session by `id`, `token_id = jti`, not revoked and not expired; it sets a new `token_id` and moves `expires_at` to now + 30 days (sliding expiry); the new refresh token's `exp` = the new `expires_at`
+- Reuse: no session matches, but the session is still active with another `token_id` → an old token was reused → the session is revoked; no grace window (parallel refreshes are handled on the FE, FE-1.1)
+- The new access token carries the user's current role; a user who is no longer `approved` → the session is revoked
+- Every failure (no cookie, bad signature, expired, revoked, reused, user not approved) → the same 401 with code `SESSION_EXPIRED` (in `@school-journal/shared`), and the cookie is cleared; the actual reason is logged on the server only, the token itself never is
+- Throttling: only the global limit
+- Daily cleanup job (`@nestjs/schedule`, `ScheduleModule.forRoot()` in `AppModule`) at 03:00 Europe/Kyiv: `SessionService.deleteStale()` deletes sessions that expired or were revoked more than `SESSION_RETENTION_DAYS` (7) days ago (constant in `constants/index.ts`); the `@Cron` job lives in a `cleanup/` module and logs the number of deleted sessions (BE-2.4 adds rejected users to it)
+- Not here: logout (BE-1.6), guards, decorators and `/auth/me` (BE-1.7), deleting rejected users (BE-2.4)
 
 **Acceptance criteria**
 
-- [ ] Valid refresh returns a new pair; the old refresh token stops working
-- [ ] The cleanup job deletes expired / revoked sessions past the retention period and keeps the rest
+- [ ] Valid refresh returns a new access token and a new refresh cookie; the session's `token_id` and `expires_at` are updated
+- [ ] Reusing the old refresh token → 401 `SESSION_EXPIRED` and the session is revoked, so the newest token stops working too
+- [ ] Missing, malformed, expired or revoked token → 401 `SESSION_EXPIRED`, cookie cleared
+- [ ] A user who is no longer approved → 401 `SESSION_EXPIRED`, session revoked
+- [ ] The cleanup job deletes sessions expired / revoked more than 7 days ago and keeps the rest
 
 ---
 

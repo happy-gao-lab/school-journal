@@ -6,7 +6,8 @@ export type RegisterResponse = {
     message: string;
 };
 
-// Response of POST /auth/login; the refresh token is set as an httpOnly cookie, not returned here
+// Response of POST /auth/login and POST /auth/refresh; the refresh token is set as an httpOnly
+// cookie, not returned here
 export type LoginResponse = {
     accessToken: string;
 };
