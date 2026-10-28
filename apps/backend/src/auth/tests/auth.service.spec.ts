@@ -11,6 +11,7 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import { compare, hash } from "bcrypt";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { PinoLogger } from "nestjs-pino";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ErrorCode, RegisterInput, Role, UserStatus } from "@school-journal/shared";
@@ -23,7 +24,7 @@ import { classesTable, studentClassesTable } from "../../db/schemas/class.schema
 import { sessionsTable } from "../../db/schemas/session.schemas.js";
 import { usersTable, type CreateUser } from "../../db/schemas/user.schemas.js";
 import { createTestDb, type TestDb } from "../../db/tests/test-db.js";
-import { AuthService } from "../auth.service.js";
+import { AuthService, refreshLogMessages } from "../auth.service.js";
 import { SessionService } from "../session.service.js";
 import type { AccessTokenPayload, RefreshTokenPayload } from "../token.service.js";
 import { TokenService } from "../token.service.js";
@@ -45,13 +46,21 @@ vi.mock("../../constants/index.js", async (importOriginal) => ({
 
 const jwtService = new JwtService();
 
-const createService = () => new AuthService(new TokenService(jwtService), new SessionService());
+const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
+
+const createService = () =>
+    new AuthService(
+        new TokenService(jwtService),
+        new SessionService(),
+        logger as unknown as PinoLogger,
+    );
 
 let client: PGlite;
 let db: TestDb;
 
-// The date is fixed in the 2026 school year
+// Registration runs on a fixed date in the 2026 school year (see the register tests' beforeEach)
 const SCHOOL_YEAR = 2026;
+const REGISTRATION_DATE = new Date("2026-10-15T12:00:00Z");
 
 type TeacherInput = Extract<RegisterInput, { role: typeof Role.Teacher }>;
 type StudentInput = Extract<RegisterInput, { role: typeof Role.Student }>;
@@ -124,8 +133,8 @@ afterAll(async () => {
 
 beforeEach(async () => {
     await db.execute(sql`truncate users, classes restart identity cascade`);
+    // starts at the real time: sessions are checked against the database's now(), which isn't faked
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
 });
 
 afterEach(() => {
@@ -134,6 +143,11 @@ afterEach(() => {
 });
 
 describe("AuthService.register", () => {
+    // the class must belong to the current school year, which depends on the date
+    beforeEach(() => {
+        vi.setSystemTime(REGISTRATION_DATE);
+    });
+
     describe("creating the account", () => {
         it("creates a pending user and answers with the status and message only", async () => {
             await expect(createService().register(teacher())).resolves.toEqual({
@@ -656,6 +670,257 @@ describe("AuthService.login", () => {
             await expect(activeSessionIdsOf(user.id)).resolves.toHaveLength(
                 MAX_ACTIVE_SESSIONS_PER_USER,
             );
+        });
+    });
+});
+
+describe("AuthService.refresh", () => {
+    const PASSWORD = "Secret12";
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
+    const sessionExpired = {
+        type: UnauthorizedException,
+        body: { message: errors.SESSION_EXPIRED, code: ErrorCode.SessionExpired },
+    };
+
+    // Signs in through login, so the tokens are the ones a real client holds
+    const signIn = async () => {
+        const [user] = await db
+            .insert(usersTable)
+            .values({
+                username: "ivan.p",
+                passwordHash: await hash(PASSWORD, 4),
+                firstName: "Ivan",
+                lastName: "Petrenko",
+                role: Role.Teacher,
+                status: UserStatus.Approved,
+            })
+            .returning();
+
+        if (!user) {
+            throw new Error("Test setup: insert into users returned no row");
+        }
+
+        const tokens = await createService().login({ username: "ivan.p", password: PASSWORD });
+
+        return { user, tokens };
+    };
+
+    const signInAgain = () => createService().login({ username: "ivan.p", password: PASSWORD });
+
+    const sessionOf = async (refreshToken: string) => {
+        const { sessionId } = await jwtService.verifyAsync<RefreshTokenPayload>(refreshToken, {
+            secret: env.JWT_REFRESH_SECRET,
+        });
+        const [session] = await db
+            .select()
+            .from(sessionsTable)
+            .where(eq(sessionsTable.id, sessionId));
+
+        if (!session) {
+            throw new Error(`Test setup: session ${sessionId} not found`);
+        }
+
+        return session;
+    };
+
+    const refresh = (token: string | undefined) => createService().refresh(token);
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    describe("rotation", () => {
+        it("gives a new token pair with a new token id and an expiry 30 days from now", async () => {
+            const { tokens } = await signIn();
+            const before = await sessionOf(tokens.refreshToken);
+            vi.setSystemTime(Date.now() + DAY_MS);
+
+            const result = await refresh(tokens.refreshToken);
+
+            const after = await sessionOf(result.refreshToken);
+            const payload = await jwtService.verifyAsync<RefreshTokenPayload & { exp: number }>(
+                result.refreshToken,
+                { secret: env.JWT_REFRESH_SECRET },
+            );
+            // whole seconds, like the token's `exp`
+            const expiresAt = new Date(
+                (Math.floor(Date.now() / 1000) + tokenTtl.REFRESH_SECONDS) * 1000,
+            ).toISOString();
+
+            expect(after.id).toBe(before.id);
+            expect(after.tokenId).not.toBe(before.tokenId);
+            expect(payload.jti).toBe(after.tokenId);
+            // sliding: the token, the session and the cookie all move to 30 days from now
+            expect(result.refreshExpiresAt).toBe(expiresAt);
+            expect(new Date(after.expiresAt).toISOString()).toBe(expiresAt);
+            expect(new Date(payload.exp * 1000).toISOString()).toBe(expiresAt);
+        });
+
+        it("puts the user's current role into the new access token", async () => {
+            const { user, tokens } = await signIn();
+            await db.update(usersTable).set({ role: Role.Admin }).where(eq(usersTable.id, user.id));
+
+            const { accessToken } = await refresh(tokens.refreshToken);
+
+            const access = await jwtService.verifyAsync<AccessTokenPayload>(accessToken, {
+                secret: env.JWT_ACCESS_SECRET,
+            });
+            expect(access).toMatchObject({ sub: String(user.id), role: Role.Admin });
+        });
+    });
+
+    describe("reuse", () => {
+        it("revokes the session when an old token comes back, so the newest token fails too", async () => {
+            const { tokens } = await signIn();
+            const rotated = await refresh(tokens.refreshToken);
+
+            await expect(rejectionOf(refresh(tokens.refreshToken))).resolves.toEqual(
+                sessionExpired,
+            );
+
+            expect((await sessionOf(tokens.refreshToken)).revokedAt).not.toBeNull();
+            await expect(rejectionOf(refresh(rotated.refreshToken))).resolves.toEqual(
+                sessionExpired,
+            );
+        });
+
+        it("lets exactly one of two parallel refreshes win and revokes the session", async () => {
+            const { tokens } = await signIn();
+
+            const results = await Promise.allSettled([
+                refresh(tokens.refreshToken),
+                refresh(tokens.refreshToken),
+            ]);
+
+            expect(results.map((result) => result.status).sort()).toEqual([
+                "fulfilled",
+                "rejected",
+            ]);
+            expect((await sessionOf(tokens.refreshToken)).revokedAt).not.toBeNull();
+        });
+
+        it("logs the reuse with the session id and never logs the token", async () => {
+            const { tokens } = await signIn();
+            const rotated = await refresh(tokens.refreshToken);
+            const { id } = await sessionOf(tokens.refreshToken);
+
+            await rejectionOf(refresh(tokens.refreshToken));
+
+            expect(logger.warn).toHaveBeenCalledWith(
+                { sessionId: id },
+                refreshLogMessages.SESSION_REVOKED,
+            );
+
+            const logged = JSON.stringify([
+                logger.debug.mock.calls,
+                logger.info.mock.calls,
+                logger.warn.mock.calls,
+            ]);
+            expect(logged).not.toContain(tokens.refreshToken);
+            expect(logged).not.toContain(rotated.refreshToken);
+        });
+    });
+
+    describe("rejected tokens", () => {
+        it("rejects a missing token and touches no session", async () => {
+            const { tokens } = await signIn();
+            const before = await sessionOf(tokens.refreshToken);
+
+            await expect(rejectionOf(refresh(undefined))).resolves.toEqual(sessionExpired);
+
+            expect(await sessionOf(tokens.refreshToken)).toEqual(before);
+        });
+
+        // each one reaches past the signature check differently; a non-uuid jti must not become a 500
+        const badTokens: [string, (sessionId: number) => Promise<string>][] = [
+            ["a garbage string", () => Promise.resolve("not.a.jwt")],
+            [
+                "a token signed with the access secret",
+                (sessionId) =>
+                    jwtService.signAsync(
+                        { sub: "1", sessionId, jti: randomUUID() },
+                        { secret: env.JWT_ACCESS_SECRET },
+                    ),
+            ],
+            [
+                "an unsigned (alg none) token",
+                (sessionId) => {
+                    const encode = (part: object) =>
+                        Buffer.from(JSON.stringify(part)).toString("base64url");
+
+                    return Promise.resolve(
+                        `${encode({ alg: "none", typ: "JWT" })}.${encode({ sub: "1", sessionId, jti: randomUUID() })}.`,
+                    );
+                },
+            ],
+            [
+                "a token with a non-uuid jti",
+                (sessionId) =>
+                    jwtService.signAsync(
+                        { sub: "1", sessionId, jti: "not-a-uuid" },
+                        { secret: env.JWT_REFRESH_SECRET },
+                    ),
+            ],
+            [
+                "a token without a session id",
+                () =>
+                    jwtService.signAsync(
+                        { sub: "1", jti: randomUUID() },
+                        { secret: env.JWT_REFRESH_SECRET },
+                    ),
+            ],
+        ];
+
+        it.each(badTokens)("rejects %s", async (_, makeToken) => {
+            const { tokens } = await signIn();
+            const { id } = await sessionOf(tokens.refreshToken);
+
+            await expect(rejectionOf(refresh(await makeToken(id)))).resolves.toEqual(
+                sessionExpired,
+            );
+        });
+
+        it("rejects a token past its 30 days", async () => {
+            const { tokens } = await signIn();
+            vi.setSystemTime(Date.now() + tokenTtl.REFRESH_SECONDS * 1000 + 1000);
+
+            await expect(rejectionOf(refresh(tokens.refreshToken))).resolves.toEqual(
+                sessionExpired,
+            );
+        });
+
+        it("rejects a revoked session and leaves the user's other sessions alone", async () => {
+            const { tokens } = await signIn();
+            const other = await signInAgain();
+            const otherBefore = await sessionOf(other.refreshToken);
+            await db
+                .update(sessionsTable)
+                .set({ revokedAt: sql`now()` })
+                .where(eq(sessionsTable.id, (await sessionOf(tokens.refreshToken)).id));
+
+            await expect(rejectionOf(refresh(tokens.refreshToken))).resolves.toEqual(
+                sessionExpired,
+            );
+
+            expect(await sessionOf(other.refreshToken)).toEqual(otherBefore);
+        });
+
+        it.each([
+            [UserStatus.Pending, null],
+            [UserStatus.Rejected, sql`now()`],
+        ])("rejects a user who is now %s and revokes the session", async (status, rejectedAt) => {
+            const { user, tokens } = await signIn();
+            await db
+                .update(usersTable)
+                .set({ status, rejectedAt })
+                .where(eq(usersTable.id, user.id));
+
+            await expect(rejectionOf(refresh(tokens.refreshToken))).resolves.toEqual(
+                sessionExpired,
+            );
+
+            expect((await sessionOf(tokens.refreshToken)).revokedAt).not.toBeNull();
         });
     });
 });

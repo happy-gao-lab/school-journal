@@ -1,9 +1,15 @@
-import { HttpStatus, INestApplication } from "@nestjs/common";
+import { HttpStatus, INestApplication, UnauthorizedException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LoginResponse, RegisterResponse, Role, UserStatus } from "@school-journal/shared";
+import {
+    ErrorCode,
+    LoginResponse,
+    RegisterResponse,
+    Role,
+    UserStatus,
+} from "@school-journal/shared";
 
 import { AppModule } from "../src/app.module.js";
 import { AuthService } from "../src/auth/auth.service.js";
@@ -52,9 +58,10 @@ let app: INestApplication | undefined;
 const createApp = async () => {
     const register = vi.fn().mockResolvedValue(registered);
     const login = vi.fn().mockResolvedValue(signedIn);
+    const refresh = vi.fn().mockResolvedValue(signedIn);
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(AuthService)
-        .useValue({ register, login })
+        .useValue({ register, login, refresh })
         .compile();
 
     app = moduleRef.createNestApplication({ bufferLogs: true });
@@ -67,7 +74,9 @@ const createApp = async () => {
     const postLogin = (body: object) =>
         request(app?.getHttpServer()).post("/api/auth/login").send(body);
 
-    return { register, post, login, postLogin };
+    const postRefresh = () => request(app?.getHttpServer()).post("/api/auth/refresh");
+
+    return { register, post, login, postLogin, refresh, postRefresh };
 };
 
 describe("auth (e2e)", () => {
@@ -148,5 +157,59 @@ describe("auth (e2e)", () => {
 
         expect(blocked.status).toBe(HttpStatus.TOO_MANY_REQUESTS);
         expect(blocked.body).toMatchObject({ message: errors.TOO_MANY_REQUESTS });
+    });
+
+    it("POST /api/auth/refresh passes the cookie to the service, returns only the access token and sets the new cookie", async () => {
+        const { refresh, postRefresh } = await createApp();
+
+        const response = await postRefresh().set("Cookie", `${REFRESH_TOKEN_COOKIE}=old.jwt`);
+
+        expect(refresh).toHaveBeenCalledWith("old.jwt");
+        expect(response.status).toBe(HttpStatus.OK);
+        expect(response.body).toEqual({
+            accessToken: signedIn.accessToken,
+        } satisfies LoginResponse);
+        expect(response.headers["set-cookie"]).toEqual([
+            `${REFRESH_TOKEN_COOKIE}=${signedIn.refreshToken}; Path=${REFRESH_TOKEN_COOKIE_PATH}; Expires=${new Date(signedIn.refreshExpiresAt).toUTCString()}; HttpOnly; SameSite=Lax`,
+        ]);
+    });
+
+    it("POST /api/auth/refresh ignores a token sent in the body", async () => {
+        const { refresh, postRefresh } = await createApp();
+
+        await postRefresh().send({ refreshToken: "old.jwt" });
+
+        expect(refresh).toHaveBeenCalledWith(undefined);
+    });
+
+    it("POST /api/auth/refresh answers 401 SESSION_EXPIRED and clears the cookie on the same path", async () => {
+        const { refresh, postRefresh } = await createApp();
+        refresh.mockRejectedValue(
+            new UnauthorizedException({
+                message: errors.SESSION_EXPIRED,
+                code: ErrorCode.SessionExpired,
+            }),
+        );
+
+        const response = await postRefresh().set("Cookie", `${REFRESH_TOKEN_COOKIE}=old.jwt`);
+
+        expect(response.status).toBe(HttpStatus.UNAUTHORIZED);
+        expect(response.body).toMatchObject({
+            message: errors.SESSION_EXPIRED,
+            code: ErrorCode.SessionExpired,
+        });
+        expect(response.headers["set-cookie"]).toEqual([
+            `${REFRESH_TOKEN_COOKIE}=; Path=${REFRESH_TOKEN_COOKIE_PATH}; Expires=${new Date(0).toUTCString()}; HttpOnly; SameSite=Lax`,
+        ]);
+    });
+
+    it("POST /api/auth/refresh keeps the cookie when the service fails with a non-auth error", async () => {
+        const { refresh, postRefresh } = await createApp();
+        refresh.mockRejectedValue(new Error("Connection terminated"));
+
+        const response = await postRefresh().set("Cookie", `${REFRESH_TOKEN_COOKIE}=old.jwt`);
+
+        expect(response.status).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
+        expect(response.headers["set-cookie"]).toBeUndefined();
     });
 });
